@@ -4,6 +4,30 @@
 
 ---
 
+## [2026-09-25] 写在 .env 里的 provider 原生 key（OPENAI_API_KEY）不生效
+
+### Problem
+
+用户按 `.env.example` 在 `backend/.env` 里填了 `OPENAI_API_KEY=sk-...`，发起对话仍报 `OpenAIError: Missing credentials`。`CREO_` 前缀的配置（如 `CREO_MODEL_API_KEY`）却一直正常。
+
+### Cause
+
+两套读取机制互不相通：pydantic-settings 只把 **`CREO_` 前缀**的变量从 `.env` 映射进 Settings 字段；而 openai/anthropic SDK 是从**进程环境变量** `os.environ` 读原生 key 的 —— 没有任何代码把 `.env` 里的 `OPENAI_API_KEY` 装进 `os.environ`。另外 `env_file=".env"` 是相对 cwd 解析的，从别的目录启动服务时连 `CREO_*` 也会失效。
+
+### Solution
+
+`app/core/config.py` 新增 `load_env_file()`（python-dotenv 显式声明为直接依赖），在模块导入时、Settings 首次构造前，以**相对 backend 包定位的绝对路径**加载 `.env` 进 `os.environ`（`override=False`，真实 shell 环境变量优先）。新增 `tests/test_config.py` 守护该行为。
+
+### Lesson
+
+`.env` 文件里有两类变量时（框架自有前缀 + provider 原生 key），必须明确每一类由谁加载；pydantic-settings 的 `env_file` 不等于 `export`。涉及环境变量的测试要密闭（`Settings(_env_file=None)` + 清理 ambient env），否则会被开发者本机的 `.env` 污染。
+
+### Related
+
+backend/app/core/config.py · backend/tests/test_config.py · docs/development/TECHNICAL-NOTES.md
+
+---
+
 ## [2026-09-25] pnpm 12 忽略 package.json 里的 onlyBuiltDependencies
 
 ### Problem

@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-09-25（夜）
+
+### .env 加载机制修正（provider 原生 key）
+
+背景与根因见 PITFALLS 同日条目。实现决策：
+
+- `load_env_file()` 放在 `app/core/config.py` **模块导入时**执行（`get_settings` 有 lru_cache，必须先于首次构造）；路径用 `Path(__file__).resolve().parents[2]` 定位 backend 根，**与启动 cwd 无关**。
+- `override=False`：真实 shell 环境变量 > `.env` 文件，符合 12-factor 预期，容器/CI 注入不受文件干扰。
+- `python-dotenv` 从传递依赖提升为**直接依赖**（我们直接 import 它，按依赖纪律声明）。
+- 测试隔离模式：`Settings(_env_file=None)` + 清除 ambient `CREO_*`（`tests/test_model.py`），此前 `test_settings_defaults` 在装有真实 `.env` 的机器上必然失败 —— 环境相关测试必须密闭。
+
+---
+
 ## 2026-09-25（晚）· 补充
 
 ### OpenBitFun 调研：可借鉴实践

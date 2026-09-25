@@ -1,8 +1,27 @@
 """Application settings (pydantic-settings, CREO_ env prefix)."""
 
 from functools import lru_cache
+from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
+
+def load_env_file(path: Path | None = None) -> None:
+    """Load backend/.env into the process environment.
+
+    Provider SDKs (openai / anthropic / ...) read their native keys (e.g.
+    OPENAI_API_KEY) from os.environ, while pydantic-settings only maps
+    CREO_-prefixed variables into Settings — without this step, keys written
+    in .env never reach them. Existing process env vars win (override=False).
+    """
+    load_dotenv(path or BACKEND_ROOT / ".env", override=False)
+
+
+# Must run before Settings is first constructed (get_settings is cached).
+load_env_file()
 
 
 class Settings(BaseSettings):

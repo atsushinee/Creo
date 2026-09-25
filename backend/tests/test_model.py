@@ -1,7 +1,16 @@
 """Tests for provider-agnostic model construction and settings parsing."""
 
+import os
+
 from app.agent.model import create_model
-from app.core.config import get_settings
+from app.core.config import Settings
+
+
+def _clear_creo_env(monkeypatch) -> None:
+    """Remove ambient CREO_* variables so tests are immune to the real .env."""
+    for name in list(os.environ):
+        if name.startswith("CREO_"):
+            monkeypatch.delenv(name, raising=False)
 
 
 def test_create_model_openai_compatible_custom_endpoint() -> None:
@@ -22,26 +31,20 @@ def test_create_model_official_openai_defaults() -> None:
 
 
 def test_settings_parse_custom_llm_env(monkeypatch) -> None:
-    get_settings.cache_clear()
+    _clear_creo_env(monkeypatch)
     monkeypatch.setenv("CREO_MODEL_PROVIDER", "openai")
     monkeypatch.setenv("CREO_MODEL_NAME", "deepseek-reasoner")
     monkeypatch.setenv("CREO_MODEL_BASE_URL", "https://api.deepseek.com/v1")
     monkeypatch.setenv("CREO_MODEL_API_KEY", "sk-test")
-    try:
-        settings = get_settings()
-        assert settings.model_display == "openai:deepseek-reasoner"
-        assert settings.model_base_url == "https://api.deepseek.com/v1"
-        assert settings.model_api_key == "sk-test"
-    finally:
-        monkeypatch.undo()
-        get_settings.cache_clear()
+
+    settings = Settings(_env_file=None)
+    assert settings.model_display == "openai:deepseek-reasoner"
+    assert settings.model_base_url == "https://api.deepseek.com/v1"
+    assert settings.model_api_key == "sk-test"
 
 
-def test_settings_defaults() -> None:
-    get_settings.cache_clear()
-    try:
-        settings = get_settings()
-        assert settings.model_display == "openai:gpt-4o-mini"
-        assert settings.model_base_url == ""
-    finally:
-        get_settings.cache_clear()
+def test_settings_defaults(monkeypatch) -> None:
+    _clear_creo_env(monkeypatch)
+    settings = Settings(_env_file=None)
+    assert settings.model_display == "openai:gpt-4o-mini"
+    assert settings.model_base_url == ""

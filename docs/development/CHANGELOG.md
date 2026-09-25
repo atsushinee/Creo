@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复写在 `backend/.env` 里的 provider 原生 key（如 `OPENAI_API_KEY`）不生效的问题：启动时以绝对路径将 `.env` 载入进程环境（真实环境变量优先），且不再依赖启动时的工作目录；`python-dotenv` 提升为直接依赖。
+
 ### Changed
 
 - **LLM 配置全面开放自定义**：新增 `CREO_MODEL_PROVIDER` / `CREO_MODEL_NAME` / `CREO_MODEL_BASE_URL` / `CREO_MODEL_API_KEY` 四个配置项，支持任意 init_chat_model 提供方；OpenAI 兼容端点（DeepSeek、Qwen、Moonshot、Ollama、vLLM…）改 BASE_URL 即可接入。健康检查的 `model` 字段显示当前配置。
