@@ -78,6 +78,22 @@ FastAPI Route → 塞入全部 Agent 逻辑          # ❌ 必须经过 Runtime
 Tool → 直接修改 React 状态                   # ❌ Tool 与 UI 通过 Event Protocol 解耦
 ```
 
+### 分层模块索引（物理布局，依赖只允许自上而下）
+
+| 层 | 路径 | 职责 | 禁止 |
+| --- | --- | --- | --- |
+| API | `backend/app/api/` | 校验、组装、SSE 编码 | import agent 内部（agent.py / model.py）与框架模块 |
+| Service | `backend/app/services/` | 存储边界（接口隔离） | 依赖 agent 层 |
+| Agent Runtime | `backend/app/agent/` | 事件转换、图构建 | ——（**唯一**可 import deepagents / langchain / langgraph） |
+| Tools | `backend/app/tools/` | 独立工具实现 | 依赖 UI / API |
+| 前端 UI | `frontend/src/components/` | 渲染与交互 | 直接 import `@/services` / `@/lib/sse`（必须走 hooks） |
+| 前端 Hooks | `frontend/src/hooks/` | 编排与副作用 | —— |
+| 前端 Service | `frontend/src/services/` | 唯一网络出口 | 依赖具体组件 |
+| Store | `frontend/src/stores/` | 纯状态归约（可单测） | 网络访问、依赖框架对象 |
+| UI 基础件 | `frontend/src/components/ui/` | 通用组件 | 依赖业务模块（只允许 `@/lib/utils`） |
+
+> 以上边界由 `node scripts/check-boundaries.mjs` 自动检查（pre-commit 会执行），新增禁止规则时同步更新该脚本。颜色禁止硬编码十六进制值（DESIGN.md §2），同样由该脚本强制。
+
 ---
 
 ## 3. Agent Event Protocol

@@ -129,6 +129,7 @@ source_added / agent_status
 - 新增 Tool **不能修改 UI 核心**：UI 通过 `tool_start` / `tool_result` 事件泛化渲染任何工具。
 - 当前：`calculator`（AST 安全求值）、`get_current_time`。
 - 预留（不实现）：`web_search` / `database` / `file_search` / `python` / `mcp` / `knowledge_search`。
+- UI 演进路径（借鉴 OpenBitFun flow_chat/tool-cards 模式）：`ToolCallCard` 保持通用兜底，未来按 `toolName` 增加覆盖组件（如 calculator 格式化展示），以注册表方式接入，不改事件协议。
 
 ---
 
@@ -164,3 +165,20 @@ source_added / agent_status
 - 后端：全局异常处理器返回统一 JSON；SSE 流内错误转换为 `error` 事件（流不断，页面不崩）。
 - 前端：SSE 解析错误 / 网络错误 → 错误横幅；Tool 失败 → 工具卡片 error 态。
 - 日志：标准库 logging，`CREO_LOG_LEVEL` 控制；Runtime 记录 run 生命周期与工具调用。
+
+---
+
+## 9. 工程实践（调研并部分借鉴自 OpenBitFun）
+
+OpenBitFun 是同类 Agent Workspace 产品（Rust workspace + 多端 React 前端 + 独立 design-system 包）。调研结论与采纳状态：
+
+| 实践 | OpenBitFun 出处 | 状态 |
+| --- | --- | --- |
+| 文档规则自动化：分层边界 + 设计 token 由脚本强制 | `scripts/check-core-boundaries.mjs`、`theme:color-audit`、`typography:audit` | ✅ 已落地为 `scripts/check-boundaries.mjs`（AGENTS.md §2 边界 + DESIGN.md §2 颜色纪律） |
+| 分层模块索引表（AGENTS.md 中物理布局 → 职责 → 禁止） | 根 AGENTS.md「Layered Module Index」 | ✅ 已落地 |
+| 每工具独立卡片组件 + 通用兜底 | `src/web-ui/src/flow_chat/tool-cards/` | 预留（见 §6，注册表模式） |
+| 事件 → 状态的显式状态机与迁移表测试 | `flow_chat/state-machine/` | 已有等价物（applyAgentEvent 纯函数 + 事件序列测试） |
+| 嵌套局部 AGENTS.md（子目录自带规范） | `design-system/AGENTS.md` 等 | 预留（仓库变大后） |
+| 生成 + 校验双脚本（`*:generate` / `*:check`） | agent-harness / i18n / canvas sdk | 预留（协议放大时） |
+| models.dev 目录快照驱动模型选择 | `update-models-dev-snapshot.mjs` | 预留（当前 env 配置够用，见 TECHNICAL-NOTES） |
+| release-please + Conventional Commits 自动发版 | `release-please-config.json` | 预留（有远端仓库后） |

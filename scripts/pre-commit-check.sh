@@ -6,6 +6,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+echo "==> Repo: boundary & design-token checks"
+node scripts/check-boundaries.mjs
+
 echo "==> Backend: lint (ruff)"
 ( cd backend && uv run ruff check . )
 

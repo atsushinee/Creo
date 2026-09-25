@@ -59,7 +59,7 @@ pnpm run dev                # http://localhost:5173
 bash scripts/pre-commit-check.sh
 ```
 
-脚本会依次执行：后端（ruff + pytest + import check）、前端（typecheck + lint + test + build）。任一步失败则不得提交。
+脚本会依次执行：仓库边界与设计 token 检查（`node scripts/check-boundaries.mjs`）、后端（ruff + pytest + import check）、前端（pnpm typecheck + lint + test + build）。任一步失败则不得提交。
 
 ### Pre-commit Checklist
 
