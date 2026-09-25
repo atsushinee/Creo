@@ -4,6 +4,40 @@
 
 ---
 
+## 2026-09-25（晚）· 补充
+
+### OpenBitFun 调研：可借鉴实践
+
+调研了同类产品 OpenBitFun（Rust workspace + 多端 React 前端 + 独立 design-system 包 + 四种 Agent Harness 模式），完整采纳清单见 `docs/architecture.md` §9。本次落地的两项：
+
+1. **文档规则自动化**（借鉴其 check-scripts 文化：`check-core-boundaries` / `theme:color-audit` / `typography:audit`）。新增 `scripts/check-boundaries.mjs`（Node 零依赖）强制：只有 `app/agent/**` 可 import 深度学习框架模块；routes 不得直连 agent 内部；services 不得依赖 agent；前端 components 不得直连 services/SSE；store 不得有网络；`components/ui` 只许依赖 `@/lib/utils`；TS/TSX 禁止硬编码十六进制颜色（DESIGN.md §2）。已接入 pre-commit 第一道检查。
+2. **分层模块索引表**（借鉴其根 AGENTS.md 的 Layered Module Index 写法）写入 AGENTS.md §2。
+
+**评估后暂缓的项**（避免过度工程）：token 管线（design-tokens 包 + 密度变体，Creo 规模下 index.css 变量已够）；事件协议状态机化（applyAgentEvent 纯函数 + 序列测试已等价覆盖 MVP）；models.dev 快照驱动的模型选择器（当前 env 配置已满足多 provider 需求，做 UI 选择器时再引入）；嵌套 AGENTS.md 与 release-please（仓库规模/远端仓库前置条件未到）。
+
+---
+
+## 2026-09-25（晚）
+
+### LLM 配置开放自定义（多 provider / base_url）
+
+原设计 `CREO_MODEL="openai:gpt-4o-mini"` 单字符串 + provider 原生 key 环境变量，无法接 OpenAI 兼容第三方端点。改为四个配置项：
+
+```text
+CREO_MODEL_PROVIDER / CREO_MODEL_NAME / CREO_MODEL_API_KEY / CREO_MODEL_BASE_URL
+```
+
+实现要点：
+
+- `create_model(provider, name, api_key, base_url)` 调 `init_chat_model(name, model_provider=provider, **kwargs)`。注意参数名是 **`model_provider`**（init_chat_model 的 model 参数本身只放模型名）。
+- `api_key` / `base_url` **只在非空时透传**：google_genai 等 provider 的 ChatModel 没有 `base_url` 字段，传了会 pydantic 校验报错；空值则回落 provider 原生行为（原生 env key、官方端点）。
+- OpenAI 兼容服务（DeepSeek/Qwen/Moonshot/GLM/Ollama/vLLM）= `provider=openai` + 自定义 `base_url`，langchain-openai 的 ChatOpenAI 原生支持这两个字段。
+- 健康/日志展示用 `Settings.model_display`（`provider:name`）拼装，配置项保持原子。
+
+放弃的方案：`CREO_MODEL` 继续作为 "provider:model" 双轨兼容 —— 两种写法并存容易踩配置优先级的坑，MVP 直接切换并在 .env.example 给全示例。
+
+---
+
 ## 2026-09-25（下午）
 
 ### 前端包管理器切换到 pnpm

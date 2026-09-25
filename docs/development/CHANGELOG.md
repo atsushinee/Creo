@@ -6,10 +6,13 @@
 
 ### Changed
 
+- **LLM 配置全面开放自定义**：新增 `CREO_MODEL_PROVIDER` / `CREO_MODEL_NAME` / `CREO_MODEL_BASE_URL` / `CREO_MODEL_API_KEY` 四个配置项，支持任意 init_chat_model 提供方；OpenAI 兼容端点（DeepSeek、Qwen、Moonshot、Ollama、vLLM…）改 BASE_URL 即可接入。健康检查的 `model` 字段显示当前配置。
 - 前端包管理器从 npm 切换为 **pnpm**：`package.json` 以 `packageManager` 锁定 pnpm@12.4.1，lockfile 由 package-lock.json 换为 pnpm-lock.yaml，新增 pnpm-workspace.yaml（构建脚本放行与供应链策略配置），Dockerfile 与 pre-commit 脚本同步更新。
 
 ### Added
 
+- **LLM 配置开放自定义**（同上 Changed）：`.env.example` 提供 DeepSeek / Ollama / Anthropic 等完整示例。
+- 仓库边界与设计 token 自动检查脚本 `scripts/check-boundaries.mjs`（借鉴 OpenBitFun 的 check-scripts 文化），强制 AGENTS.md 分层边界与 DESIGN.md 颜色纪律，已接入 pre-commit 首道检查。
 - Agent 会话基础链路：React Agent UI → SSE → FastAPI → DeepAgents → LLM → Tools → Result，全程流式。
 - `POST /api/chat`：SSE 流式返回 Creo Agent Event（run_started / message_start / message_delta / message_end / tool_start / tool_result / error / run_finished）。
 - 会话管理：会话列表、历史消息读取、删除（内存存储）。
