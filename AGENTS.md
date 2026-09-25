@@ -214,6 +214,13 @@ What is the maintenance cost?
 
 新增重要依赖必须在 `docs/development/TECHNICAL-NOTES.md` 中记录。
 
+### 工具链基线（强制）
+
+- **后端包管理器：`uv`**（lockfile 为 `backend/uv.lock`）。
+- **前端包管理器：`pnpm`**（版本由 `frontend/package.json` 的 `packageManager` 字段锁定；lockfile 为 `frontend/pnpm-lock.yaml`）。
+- 禁止混用 `npm` / `yarn` 安装依赖或提交 `package-lock.json` / `yarn.lock`。
+- pnpm 11+ 的仓库级配置（构建脚本放行、供应链策略等）写在 **`frontend/pnpm-workspace.yaml`**，不是 package.json。
+
 ---
 
 ## 12. API Compatibility

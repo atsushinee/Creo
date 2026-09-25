@@ -26,7 +26,7 @@ Creo Agent Events (SSE) → React Event Dispatcher → UI State
 
 Creo 是前后端分离的单体仓库（monorepo）：
 
-- `frontend/`：React 19 + TypeScript (strict) + Vite + Tailwind CSS。SPA，无 Next.js。
+- `frontend/`：React 19 + TypeScript (strict) + Vite + Tailwind CSS，包管理器 **pnpm**（版本锁定于 package.json `packageManager`，仓库配置在 `pnpm-workspace.yaml`）。SPA，无 Next.js。
 - `backend/`：Python 3.12+ / FastAPI / DeepAgents / uv。无数据库。
 
 ---

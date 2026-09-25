@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-09-25（下午）
+
+### 前端包管理器切换到 pnpm
+
+**决定**：前端统一使用 pnpm，版本由 `frontend/package.json` 的 `packageManager` 字段锁定（当前 `pnpm@12.4.1`）。后端仍为 uv。规则写入 AGENTS.md §11 与 CONTRIBUTING.md §6。
+
+**原因**：
+
+- 内容寻址存储省磁盘、安装快；
+- **严格依赖**：默认不提升传递依赖（无"幽灵依赖"），`pnpm exec esbuild` 不可用是预期行为 —— 只能通过直接依赖的入口使用；
+- `packageManager` 字段 + corepack 可复现工具链版本；
+- pnpm 12 内置供应链校验（install 时对 lockfile 逐条校验发布时间策略，380 条约 7.5s）。
+
+**pnpm 12.4.1 实测发现（与旧资料差异）**：
+
+- 仓库级配置已迁移到 **`pnpm-workspace.yaml`**，package.json 的 `pnpm.onlyBuiltDependencies` 字段**被忽略**（见 PITFALLS 同日条目）；
+- 首次 `pnpm install` 会自动生成 `pnpm-workspace.yaml` 占位（`allowBuilds: esbuild: set this to true or false`），并因供应链策略自动写入 `minimumReleaseAgeExclude: [lucide-react@1.48.0]`（该包发布时间过新）；
+- 构建脚本放行格式为 `allowBuilds` 布尔映射，当前放行 `esbuild` 与 `@tailwindcss/oxide`（两者原生二进制经 optional deps 提供，postinstall 仅做校验/链接）。
+
+**变更范围**：`package.json`（+packageManager）、`pnpm-lock.yaml`（替代 package-lock.json）、`pnpm-workspace.yaml`（新增）、`frontend/Dockerfile`（corepack 拉起 pnpm + `--frozen-lockfile`；运行时直接复制自包含的 node_modules 并用 `node_modules/.bin/vite` 启动 preview）、`scripts/pre-commit-check.sh`、README / CONTRIBUTING / AGENTS / architecture 文档命令。
+
+---
+
 ## 2026-09-25
 
 ### DeepAgents Integration（安装版本 0.7.18 勘察结果）

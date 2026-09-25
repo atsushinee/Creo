@@ -4,6 +4,30 @@
 
 ---
 
+## [2026-09-25] pnpm 12 忽略 package.json 里的 onlyBuiltDependencies
+
+### Problem
+
+按 pnpm 10 的旧写法把 `pnpm.onlyBuiltDependencies` 写进 `package.json`，`pnpm install` 仍报 `ERR_PNPM_IGNORED_BUILDS`（esbuild 构建脚本被忽略）。
+
+### Cause
+
+pnpm 11+/12 把仓库级配置迁到了 `pnpm-workspace.yaml`；package.json 的 `pnpm` 字段不再被读取。
+
+### Solution
+
+在 `frontend/pnpm-workspace.yaml` 用 `allowBuilds` 布尔映射放行 `esbuild` 与 `@tailwindcss/oxide`。
+
+### Lesson
+
+pnpm 大版本间配置位置会迁移；以当前版本的 install 报错提示与自动生成的配置文件为准，不按记忆或旧文写配置。
+
+### Related
+
+frontend/pnpm-workspace.yaml · docs/development/TECHNICAL-NOTES.md
+
+---
+
 ## [2026-09-25] deepagents 0.7.18 API 与旧资料不一致
 
 ### Problem

@@ -41,12 +41,12 @@ uv run uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd frontend
-npm install
-npm run typecheck           # tsc --noEmit（strict 模式）
-npm run lint                # eslint
-npm run test                # vitest
-npm run build               # 产出 dist/
-npm run dev                 # http://localhost:5173
+pnpm install
+pnpm run typecheck          # tsc --noEmit（strict 模式）
+pnpm run lint               # eslint
+pnpm run test               # vitest
+pnpm run build              # 产出 dist/
+pnpm run dev                # http://localhost:5173
 ```
 
 ---
@@ -137,6 +137,8 @@ Can existing dependencies solve it? / What is the maintenance cost?
 ```
 
 新增重要依赖必须在 `TECHNICAL-NOTES.md` 记录原因。当前阶段禁止引入 RAG / 向量库 / MCP / 认证等大型依赖。
+
+**包管理器（强制）**：前端统一 pnpm（版本锁定在 `package.json` 的 `packageManager` 字段），后端统一 uv。禁止混用 npm / yarn；pnpm 的仓库级配置在 `pnpm-workspace.yaml`（详见 AGENTS.md §11）。
 
 ---
 

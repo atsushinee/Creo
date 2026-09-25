@@ -1,0 +1,7 @@
+# pnpm workspace/config file for the single-package frontend.
+# pnpm 11+/12 reads repo settings from this file (package.json#pnpm is ignored).
+allowBuilds:
+  "@tailwindcss/oxide": true
+  esbuild: true
+minimumReleaseAgeExclude:
+  - lucide-react@1.48.0

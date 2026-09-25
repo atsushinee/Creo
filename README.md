@@ -30,7 +30,7 @@ Result
 
 | 层 | 技术 |
 | --- | --- |
-| Frontend | React 19 · TypeScript (strict) · Vite · React Router · Tailwind CSS · shadcn 风格组件 · lucide-react |
+| Frontend | React 19 · TypeScript (strict) · Vite · React Router · Tailwind CSS · shadcn 风格组件 · lucide-react · pnpm |
 | Backend | Python 3.12+ · FastAPI · DeepAgents · Pydantic · SSE · uv |
 | 协议 | Creo Agent Event Protocol（自定义事件协议，前端不依赖 DeepAgents 内部对象） |
 
@@ -55,7 +55,7 @@ creo/
 
 ### 前置条件
 
-- Node.js ≥ 20.19（推荐 22）
+- Node.js ≥ 20.19（推荐 22）+ **pnpm 12**（`corepack enable` 或 `npm i -g pnpm`）
 - Python ≥ 3.12
 - [uv](https://docs.astral.sh/uv/)
 - 一个 LLM API Key（默认使用 OpenAI 兼容模型）
@@ -75,8 +75,8 @@ uv run uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 打开 <http://localhost:5173>（开发模式下 `/api` 已通过 Vite 代理到后端 8000 端口）。

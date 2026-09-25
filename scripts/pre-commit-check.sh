@@ -16,16 +16,16 @@ echo "==> Backend: import check"
 ( cd backend && uv run python -c "from app.main import app" )
 
 echo "==> Frontend: typecheck (tsc)"
-( cd frontend && npm run typecheck )
+( cd frontend && pnpm run typecheck )
 
 echo "==> Frontend: lint (eslint)"
-( cd frontend && npm run lint )
+( cd frontend && pnpm run lint )
 
 echo "==> Frontend: tests (vitest)"
-( cd frontend && npm run test )
+( cd frontend && pnpm run test )
 
 echo "==> Frontend: build (vite)"
-( cd frontend && npm run build )
+( cd frontend && pnpm run build )
 
 echo ""
 echo "All pre-commit checks passed."
