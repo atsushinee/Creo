@@ -1,0 +1,16 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Provider key + model come from the root .env (compose reads it automatically)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CREO_MODEL=${CREO_MODEL:-openai:gpt-4o-mini}
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:4173"
+    depends_on:
+      - backend

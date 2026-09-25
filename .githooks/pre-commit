@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Optional git hook: enable with `git config core.hooksPath .githooks`
+# (see CONTRIBUTING.md §3).
+bash "$(cd "$(dirname "$0")/.." && pwd)/scripts/pre-commit-check.sh"
