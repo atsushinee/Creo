@@ -1,0 +1,221 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ */
+/* Creo Design Tokens (DESIGN.md §2)                                   */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --background: #ffffff;
+  --surface: #f5f5f7;
+  --surface-raised: #ffffff;
+  --foreground: #1d1d1f;
+  --muted-foreground: #6e6e73;
+  --border: #e5e5e7;
+  --primary: #0066cc;
+  --primary-foreground: #ffffff;
+  --success: #34c759;
+  --warning: #ff9f0a;
+  --error: #ff3b30;
+  --ring: rgb(0 102 204 / 0.35);
+}
+
+.dark {
+  --background: #000000;
+  --surface: #1c1c1e;
+  --surface-raised: #2c2c2e;
+  --foreground: #f5f5f7;
+  --muted-foreground: #a1a1a6;
+  --border: #2c2c2e;
+  --primary: #2997ff;
+  --primary-foreground: #ffffff;
+  --success: #30d158;
+  --warning: #ff9f0a;
+  --error: #ff453a;
+  --ring: rgb(41 151 255 / 0.4);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-ring: var(--ring);
+
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter",
+    "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.05);
+
+  --animate-fade-in: fade-in 160ms ease-out both;
+  --animate-blink: blink 1.2s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-size: 14px;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 22%, transparent);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
+    border-radius: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Code highlight (restrained, low-saturation; DESIGN.md §7)           */
+/* ------------------------------------------------------------------ */
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-tag {
+  color: #a8534a;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #4a7a43;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet {
+  color: #96601f;
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name {
+  color: #4a6a9c;
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-params {
+  color: #7a5c9e;
+}
+
+.hljs-meta,
+.hljs-deletion {
+  color: #8a6d5c;
+}
+
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-tag {
+  color: #d98a81;
+}
+
+.dark .hljs-string,
+.dark .hljs-regexp,
+.dark .hljs-addition {
+  color: #93bf8c;
+}
+
+.dark .hljs-number,
+.dark .hljs-literal,
+.dark .hljs-symbol,
+.dark .hljs-bullet {
+  color: #d6a861;
+}
+
+.dark .hljs-title,
+.dark .hljs-title.function_,
+.dark .hljs-section,
+.dark .hljs-name {
+  color: #94b0d6;
+}
+
+.dark .hljs-attr,
+.dark .hljs-attribute,
+.dark .hljs-variable,
+.dark .hljs-template-variable,
+.dark .hljs-type,
+.dark .hljs-built_in,
+.dark .hljs-builtin-name,
+.dark .hljs-params {
+  color: #b7a1d6;
+}
+
+.dark .hljs-meta,
+.dark .hljs-deletion {
+  color: #b39a89;
+}
