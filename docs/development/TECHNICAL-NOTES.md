@@ -1,0 +1,52 @@
+# Technical Notes
+
+记录技术实现细节：为什么这样设计、放弃了什么方案、API 版本差异、关键实现细节、性能与兼容性问题。新条目加在最上面。
+
+---
+
+## 2026-09-25
+
+### DeepAgents Integration（安装版本 0.7.18 勘察结果）
+
+按 AGENTS.md §12 流程：先 `inspect` 实际安装版本，再用最小探针脚本（ScriptedChatModel + calculator）跑通真实 graph 流，确认以下事实后才写 runtime：
+
+- **deepagents 0.7.18 建立在 LangChain 1.x 中间件架构上**（`langchain.agents.middleware`），不再是早期 0.0.x 的裸 LangGraph 封装。
+- `create_deep_agent` 的系统提示词参数是 **`system_prompt`**，旧资料中的 `instructions` 参数不存在；`model` 可传模型字符串或实例；**`checkpointer` 是一等参数**（传 `MemorySaver()`，配合 `config={"configurable": {"thread_id": session_id}}` 实现会话记忆）。
+- 流事件形状（`astream(..., stream_mode=["messages","updates"], subgraphs=True)`）：每一项是 **3 元组 `(namespace, mode, payload)`**。
+  - `messages` 模式 payload 为 `(chunk, metadata)`：chunk 是 `AIMessageChunk`（token 增量；每个 model 调用结束时附一个空内容、`chunk_position="last"` 的哨兵块）或完整 `ToolMessage`。
+  - `updates` 模式 payload 为 `{node: state_delta}`：`model` 节点 delta 含完整 `AIMessage`（`tool_calls` 已解析为 dict），`tools` 节点 delta 含 `ToolMessage`；middleware 产生的节点 delta 可能是 `None`，必须防御。
+- `ToolMessage` 会**同时**出现在 messages 与 updates 两种模式里 → runtime 按 `tool_call_id` 去重（先到先得）。
+- `AIMessageChunk.tool_calls` 在流式过程中只含已完整解析的调用，**不可靠** → `tool_start` 只从 updates 模式的完整 `tool_calls` 发出（保证 args 是完整 JSON 对象，符合 ADR-0002 约定）。
+- 分段消息（message_start/end 多段）通过 `chunk.id`（同一 model 调用内稳定）+ `chunk_position="last"` 哨兵 + tool_start 前强制关闭三条信号共同确定。
+- deepagents 0.7.18 **不自带 langchain-openai**（只带 anthropic / google-genai 集成）→ 显式添加 `langchain-openai` 依赖，默认模型用 `openai:gpt-4o-mini`。
+
+放弃的方案：透传 LangGraph 原始事件给前端（违背 ADR-0002）；在 runtime 里同时消费 messages 的 tool_call_chunks 增量（部分 JSON 无法保证 args 完整性，不值得为渐进式 args 显示增加协议事件）。
+
+### Agent Runtime 事件转换器（关键实现细节）
+
+- `messages` 模式只负责文本增量与消息生命周期；`updates` 模式只负责 tool_start / tool_result。两种模式天然有序（模型 token 先于节点完成事件，节点完成先于 tools 节点执行）。
+- 客户端断连时 `GeneratorExit`（BaseException）不被 `except Exception` 捕获 → 不会在已关闭的 async generator 里继续 yield（避免 `RuntimeError: async generator ignored GeneratorExit`）。
+- `AgentRuntime` 采用 lazy builder：模型初始化失败（如缺 API key）不在启动时崩溃，而是首个请求流式返回 `error` 事件，health 端点展示 `agent: pending`。
+
+### Tool 错误隔离
+
+langchain 1.x 的 ToolNode 对意外异常默认**向上抛出**（`_default_handle_tool_errors`），会终止整个 run。用 `create_deep_agent(middleware=[ToolErrorMiddleware()])` 拦截：捕获工具异常并返回 `status="error"` 的 ToolMessage → 协议的 `tool_result.isError=true`，UI 显示错误态、模型可自行恢复。未来新增工具自动获得此行为。
+
+### SSE 实现细节
+
+- 后端手写帧编码（`event:` + `data:` + 空行），不引入 sse-starlette（依赖纪律）；响应头 `Cache-Control: no-cache`、`X-Accel-Buffering: no`。
+- 前端 `fetch` + `ReadableStream` + 纯函数帧解析器（`lib/sse.ts`，可单测）；`EventSource` 因不支持 POST 被排除（ADR-0003）。
+- Vite dev proxy 与 `vite preview` 均配置 `proxyTimeout: 0` 防止流被缓冲。
+
+### 前端状态设计
+
+- `agentStore.applyAgentEvent(state, sessionId, event)` 是纯函数（单测覆盖全事件序列）；zustand 只是对它的薄封装。
+- 一次 Run 的助手输出聚合为一条消息，内部按序混排 text / tool 两类 part —— 对应设计稿「Agent 过程 + 最终答案」的视觉结构。
+- 事件驱动、无轮询；流结束后拉取一次会话列表以对齐服务端标题/时间戳。
+
+### 已知技术债（Debt）
+
+- 前端 bundle 654KB（gzip 203KB），超过 Vite 500KB 警告线：react-markdown + highlight.js 占大头。后续可做 manualChunks / 动态 import。
+- 会话记忆与历史存在进程内（MemorySaver），重启即失 —— MVP 预期行为，接口已隔离（SessionService / checkpointer 可替换）。
+- 历史恢复时 `AIMessage.id` 直接复用框架 id；跨进程重启后 id 稳定性依赖框架实现。
+- docker-compose / Dockerfile 提供为本地编排脚手架，**本环境无 Docker 未实测**（已知限制，首次使用时验证）。
