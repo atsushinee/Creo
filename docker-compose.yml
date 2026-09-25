@@ -4,9 +4,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Provider key + model come from the root .env (compose reads it automatically)
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - CREO_MODEL=${CREO_MODEL:-openai:gpt-4o-mini}
+      # Model + endpoint come from the root .env (compose reads it automatically).
+      # Any init_chat_model provider works; OpenAI-compatible endpoints are
+      # configured via CREO_MODEL_BASE_URL + CREO_MODEL_API_KEY.
+      - CREO_MODEL_PROVIDER=${CREO_MODEL_PROVIDER:-openai}
+      - CREO_MODEL_NAME=${CREO_MODEL_NAME:-gpt-4o-mini}
+      - CREO_MODEL_API_KEY=${CREO_MODEL_API_KEY:-${OPENAI_API_KEY:-}}
+      - CREO_MODEL_BASE_URL=${CREO_MODEL_BASE_URL:-}
 
   frontend:
     build: ./frontend

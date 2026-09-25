@@ -58,18 +58,31 @@ creo/
 - Node.js ≥ 20.19（推荐 22）+ **pnpm 12**（`corepack enable` 或 `npm i -g pnpm`）
 - Python ≥ 3.12
 - [uv](https://docs.astral.sh/uv/)
-- 一个 LLM API Key（默认使用 OpenAI 兼容模型）
+- 一个 LLM API Key（支持任意 provider，OpenAI 兼容端点可自定义 base_url）
 
 ### 后端
 
 ```bash
 cd backend
-cp .env.example .env          # 填入 OPENAI_API_KEY（或其他 provider 的 key）
+cp .env.example .env          # 配置模型与 API key（见下）
 uv sync
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-健康检查：<http://localhost:8000/api/health>，API 文档：<http://localhost:8000/docs>
+模型配置（`backend/.env`）：provider / model / base_url / api_key 全部可自定义，支持任何 OpenAI 兼容端点（DeepSeek、Qwen、Moonshot、Ollama、vLLM…）：
+
+```ini
+CREO_MODEL_PROVIDER=openai
+CREO_MODEL_NAME=gpt-4o-mini
+OPENAI_API_KEY=sk-...
+
+# 例：接 DeepSeek —— OpenAI 兼容服务只需改 NAME / BASE_URL / API_KEY
+# CREO_MODEL_NAME=deepseek-chat
+# CREO_MODEL_BASE_URL=https://api.deepseek.com/v1
+# CREO_MODEL_API_KEY=sk-...
+```
+
+健康检查：<http://localhost:8000/api/health>（`model` 字段显示当前配置），API 文档：<http://localhost:8000/docs>
 
 ### 前端
 
@@ -84,7 +97,7 @@ pnpm run dev
 ### Docker（可选）
 
 ```bash
-# 在仓库根目录准备 .env：OPENAI_API_KEY=sk-...（会被 compose 注入 backend）
+# 在仓库根目录准备 .env（模型/key 配置，会被 compose 注入 backend）
 docker compose up --build
 ```
 

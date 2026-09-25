@@ -36,7 +36,13 @@ def build_agent(
     )
 
 
-def make_agent_builder(model_spec: str, instructions: str) -> Callable[[], Any]:
+def make_agent_builder(
+    model_provider: str,
+    model_name: str,
+    instructions: str,
+    model_api_key: str = "",
+    model_base_url: str = "",
+) -> Callable[[], Any]:
     """Return a lazily-invoked agent builder sharing one in-process checkpointer.
 
     Lazy on purpose: building the model may fail (e.g. missing provider API
@@ -46,7 +52,12 @@ def make_agent_builder(model_spec: str, instructions: str) -> Callable[[], Any]:
     checkpointer = MemorySaver()
 
     def build() -> Any:
-        model = create_model(model_spec)
+        model = create_model(
+            provider=model_provider,
+            name=model_name,
+            api_key=model_api_key or None,
+            base_url=model_base_url or None,
+        )
         return build_agent(model=model, instructions=instructions, checkpointer=checkpointer)
 
     return build

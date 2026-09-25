@@ -22,9 +22,15 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     application.state.session_service = InMemorySessionService()
     application.state.agent_runtime = AgentRuntime(
-        agent_builder=make_agent_builder(settings.model, settings.agent_instructions)
+        agent_builder=make_agent_builder(
+            model_provider=settings.model_provider,
+            model_name=settings.model_name,
+            instructions=settings.agent_instructions,
+            model_api_key=settings.model_api_key,
+            model_base_url=settings.model_base_url,
+        )
     )
-    logger.info("Creo backend ready (model=%s)", settings.model)
+    logger.info("Creo backend ready (model=%s)", settings.model_display)
     yield
     logger.info("Creo backend shutting down (in-memory state is discarded)")
 

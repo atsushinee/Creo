@@ -21,6 +21,6 @@ async def health(
     return HealthOut(
         status="ok",
         version=__version__,
-        model=settings.model,
+        model=settings.model_display,
         agent="ready" if runtime.status == "ready" else "pending",
     )
