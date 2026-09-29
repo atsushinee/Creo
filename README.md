@@ -154,8 +154,8 @@ CREO_KB_EMBEDDING_DIM=1024
 ### 4. Use It
 
 1. Open the **Knowledge** page (top navigation) → create a knowledge base (this is the "category"; each KB = a local folder + one Milvus collection).
-2. Upload PDFs — parsing, chunking and indexing run in the background; rows poll from `pending → processing → ready / failed`, failed documents can be re-ingested with one click.
-3. In **Chat**, ask about your documents — the agent calls `search_knowledge_base` (hybrid BM25 + dense retrieval, RRF fusion) and cites `[1] filename (page N)` sources. Retrieval calls show up as regular tool cards in the UI.
+2. Upload PDFs — parsing, chunking and indexing run in the background; rows poll from `pending → processing → ready / failed`, failed documents can be re-ingested with one click. Every stage (upload/parse/chunk/embed/index) is recorded — open the **trace timeline** on a document row to see durations and details. Paid stages (parse, embed) are content-addressed cached under `backend/data/kb/_cache/`, so re-ingesting the same file never re-spends API quota.
+3. **Preview** a document inline (pdf.js rendering with page navigation) or read it in **Chat** — the agent calls `search_knowledge_base` (hybrid BM25 + dense retrieval, RRF fusion) and cites `[1] filename (page N)` sources. Retrieval calls show up as regular tool cards in the UI.
 
 ### Knowledge Base Notes
 

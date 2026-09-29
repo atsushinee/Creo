@@ -154,8 +154,8 @@ CREO_KB_EMBEDDING_DIM=1024
 ### 4. 使用流程
 
 1. 打开顶部导航的 **Knowledge** 页 → 新建知识库（即"分类"；每个 KB = 一个本地目录 + 一个 Milvus collection）。
-2. 上传 PDF —— 解析、切块、入库在后台执行；文档状态从 `pending → processing → ready / failed` 轮询刷新，失败的文档可一键重试。
-3. 回到 **Chat** 提问 —— Agent 会调用 `search_knowledge_base` 工具（BM25 + 密集混合检索、RRF 融合），并以 `[1] 文件名 (page N)` 的格式标注出处。检索过程以普通工具卡片形式在 UI 中展示。
+2. 上传 PDF —— 解析、切块、入库在后台执行；文档状态从 `pending → processing → ready / failed` 轮询刷新，失败的文档可一键重试。每个阶段（upload/parse/chunk/embed/index）都会记录——点文档行的**追踪时间线**查看耗时与详情。付费阶段（解析/向量化）按内容指纹缓存于 `backend/data/kb/_cache/`，同文件重复入库不会重复消耗 API 额度。
+3. 文档支持**内联预览**（pdf.js 渲染 + 翻页），或到 **Chat** 提问 —— Agent 会调用 `search_knowledge_base` 工具（BM25 + 密集混合检索、RRF 融合），并以 `[1] 文件名 (page N)` 的格式标注出处。检索过程以普通工具卡片形式在 UI 中展示。
 
 ### 知识库注意事项
 
