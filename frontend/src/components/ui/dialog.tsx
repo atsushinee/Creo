@@ -55,6 +55,7 @@ interface ConfirmDialogProps {
   title: string;
   description?: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   danger?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -65,6 +66,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   danger = false,
   onConfirm,
   onCancel,
@@ -77,7 +79,7 @@ export function ConfirmDialog({
       )}
       <div className="flex justify-end gap-2 pt-4">
         <Button variant="outline" size="sm" onClick={onCancel}>
-          Cancel
+          {cancelLabel}
         </Button>
         <Button
           size="sm"
@@ -95,6 +97,7 @@ interface PromptDialogProps {
   title: string;
   placeholder?: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   onConfirm: (value: string) => void;
   onCancel: () => void;
 }
@@ -107,6 +110,7 @@ export function PromptDialog({
   title,
   placeholder,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   onConfirm,
   onCancel,
 }: PromptDialogProps) {
@@ -137,7 +141,7 @@ export function PromptDialog({
       />
       <div className="flex justify-end gap-2 pt-4">
         <Button variant="outline" size="sm" onClick={onCancel}>
-          Cancel
+          {cancelLabel}
         </Button>
         <Button size="sm" disabled={!value.trim()} onClick={submit}>
           {confirmLabel}

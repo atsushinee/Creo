@@ -21,6 +21,7 @@
 
 ### Added
 
+- **中英双语界面**：零依赖 i18n（Context + 双语字典，`lib/i18n.ts`），语言跟随浏览器、可持久化；头部右上角新增语言切换按钮（与主题切换并列），全部页面文案（导航/对话/知识库/召回测试/弹窗/状态标签）双语覆盖。
 - **思考过程可视化（ADR-0002 Update 1）**：推理模型（Qwen/DeepSeek-R1 等）的思考增量以 `thinking_delta` 事件透出，对话中在答案上方显示可折叠的 "Thinking…" 块——思考时自动展开、答案开始后自动收起，可随时点开回看；仅透传模型自带推理，历史回放不含思考内容。
 - **知识库封面图格**：左侧文档列表改为"封面即卡片"——第一页缩略图占满卡片，文件名叠加在底部渐变上、状态点左上、悬停右上浮出追踪/重试/删除操作。
 - **知识库 v1（ADR-0004）**：支持创建多个知识库（分类）并上传 PDF，后台经 Unstructured Transform API 解析（profile=best，含页码与表格 HTML）并做客户端分块，以 bge-m3 密集向量 + Milvus 服务端 BM25 稀疏向量双通道写入 Zilliz（云上 AUTOINDEX 自适应）；Agent 新增 `search_knowledge_base` 工具做 BM25/Dense 混合检索并引用出处；前端新增 `/knowledge` 管理页（上传、解析状态轮询、失败重试、删除、**pdf.js 内联预览**、**链路追踪时间线**）。付费阶段（解析/向量化）按内容指纹缓存（`data/kb/_cache/`），失败重跑与同内容重复上传零重复计费；删除知识库级联清理登记与追踪数据；KB/文档删除均需二次确认。默认关闭：`CREO_KB_ENABLED=true` 且配齐 `CREO_MILVUS_URI/TOKEN`、`CREO_UNSTRUCTURED_API_KEY`、`CREO_KB_EMBEDDING_*` 后启用；未配齐时 KB 端点返回 503、工具不注册，聊天主链路不受影响。

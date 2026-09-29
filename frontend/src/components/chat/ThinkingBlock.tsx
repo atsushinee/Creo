@@ -1,6 +1,7 @@
-import { useState } from "react";
 import { ChevronDown, Lightbulb } from "lucide-react";
+import { useState } from "react";
 
+import { useI18n } from "@/hooks/useI18n";
 import { cn } from "@/lib/utils";
 
 interface ThinkingBlockProps {
@@ -15,6 +16,7 @@ interface ThinkingBlockProps {
  * always toggle it back open.
  */
 export function ThinkingBlock({ text, active }: ThinkingBlockProps) {
+  const { t } = useI18n();
   // null = follow `active`; after a manual toggle the user wins.
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const open = userOpen ?? active;
@@ -27,13 +29,14 @@ export function ThinkingBlock({ text, active }: ThinkingBlockProps) {
         aria-expanded={open}
         className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-surface-raised/60"
       >
-        {active ? (
-          <Lightbulb className="size-3.5 shrink-0 animate-pulse text-warning" />
-        ) : (
-          <Lightbulb className="size-3.5 shrink-0 text-muted-foreground" />
-        )}
+        <Lightbulb
+          className={cn(
+            "size-3.5 shrink-0",
+            active ? "animate-pulse text-warning" : "text-muted-foreground",
+          )}
+        />
         <span className="text-[12px] font-medium text-muted-foreground">
-          {active ? "Thinking…" : "Thought process"}
+          {active ? t("thinking.thinking") : t("thinking.done")}
         </span>
         <ChevronDown
           className={cn(

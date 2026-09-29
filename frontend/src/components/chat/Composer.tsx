@@ -2,6 +2,7 @@ import { ArrowUp, Square } from "lucide-react";
 import { memo, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/hooks/useI18n";
 
 interface ComposerProps {
   isBusy: boolean;
@@ -20,6 +21,7 @@ export const Composer = memo(function Composer({
 }: ComposerProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { t } = useI18n();
 
   useLayoutEffect(() => {
     const element = textareaRef.current;
@@ -55,7 +57,7 @@ export const Composer = memo(function Composer({
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Creo anything…"
+            placeholder={t("composer.placeholder")}
             rows={1}
             className="max-h-40 min-h-6 flex-1 resize-none bg-transparent text-[14px] leading-relaxed outline-none placeholder:text-muted-foreground"
           />
@@ -82,7 +84,7 @@ export const Composer = memo(function Composer({
           )}
         </div>
         <p className="pt-1.5 text-center text-[11px] text-muted-foreground">
-          Creo can make mistakes. Verify important information.
+          {t("composer.disclaimer")}
         </p>
       </div>
     </div>

@@ -3,6 +3,8 @@ import { History, RotateCcw, Trash2 } from "lucide-react";
 
 import { DocThumbnail } from "@/components/knowledge/DocThumbnail";
 import { ConfirmDialog } from "@/components/ui/dialog";
+import { useI18n } from "@/hooks/useI18n";
+import type { TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { KbDocumentInfo, PipelineEventInfo } from "@/types/knowledgeBase";
 
@@ -48,6 +50,9 @@ export function DocGrid({
 }: DocGridProps) {
   const [traceDocId, setTraceDocId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<KbDocumentInfo | null>(null);
+  const { t } = useI18n();
+
+  const statusLabel = (status: KbDocumentInfo["status"]) => t(`status.${status}`);
 
   const toggleTrace = (doc: KbDocumentInfo) => {
     if (traceDocId === doc.id) {
@@ -70,8 +75,8 @@ export function DocGrid({
               : "hover:border-primary/40",
           )}
           onClick={() => onSelect(doc)}
-          title={`${doc.filename} · ${doc.status}${
-            doc.status === "ready" ? ` · ${doc.chunkCount} chunks` : ""
+          title={`${doc.filename} · ${statusLabel(doc.status)}${
+            doc.status === "ready" ? ` · ${doc.chunkCount} ${t("doc.chunks")}` : ""
           } · ${formatSize(doc.size)}`}
         >
           <div className="relative">
@@ -82,14 +87,14 @@ export function DocGrid({
                 "absolute top-1.5 left-1.5 size-2 rounded-full ring-1 ring-white/70",
                 statusDot[doc.status],
               )}
-              aria-label={doc.status}
+              aria-label={statusLabel(doc.status)}
             />
 
             <div className="absolute top-1 right-1 flex items-center gap-0.5 rounded-md bg-black/55 p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
               <button
                 type="button"
-                aria-label={`Trace ${doc.filename}`}
-                title="Pipeline trace"
+                aria-label={t("doc.trace")}
+                title={t("doc.trace")}
                 className="flex size-6 cursor-pointer items-center justify-center rounded text-white transition-colors hover:bg-white/20"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -101,8 +106,8 @@ export function DocGrid({
               {doc.status === "failed" && (
                 <button
                   type="button"
-                  aria-label={`Re-ingest ${doc.filename}`}
-                  title="Re-ingest"
+                  aria-label={t("doc.reingest")}
+                  title={t("doc.reingest")}
                   className="flex size-6 cursor-pointer items-center justify-center rounded text-white transition-colors hover:bg-white/20"
                   onClick={(event) => {
                     event.stopPropagation();
@@ -114,8 +119,8 @@ export function DocGrid({
               )}
               <button
                 type="button"
-                aria-label={`Delete ${doc.filename}`}
-                title="Delete"
+                aria-label={t("doc.delete")}
+                title={t("doc.delete")}
                 disabled={doc.status === "processing"}
                 className="flex size-6 cursor-pointer items-center justify-center rounded text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={(event) => {
@@ -142,7 +147,7 @@ export function DocGrid({
           {traceDocId === doc.id && (
             <div className="border-t px-2 py-1.5" onClick={(event) => event.stopPropagation()}>
               {(traceByDoc[doc.id] ?? []).length === 0 ? (
-                <p className="text-[10.5px] text-muted-foreground">No pipeline events yet.</p>
+                <p className="text-[10.5px] text-muted-foreground">{t("doc.noTrace")}</p>
               ) : (
                 <ol className="space-y-0.5">
                   {(traceByDoc[doc.id] ?? []).map((event) => (
@@ -157,7 +162,9 @@ export function DocGrid({
                       />
                       <span className="w-11 shrink-0 font-medium">{event.stage}</span>
                       <span className="shrink-0 text-muted-foreground">{event.durationMs} ms</span>
-                      <span className="shrink-0 text-muted-foreground">{event.status}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {t(`trace.${event.status}` as TranslationKey)}
+                      </span>
                     </li>
                   ))}
                 </ol>
@@ -169,9 +176,10 @@ export function DocGrid({
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title={`Delete "${pendingDelete?.filename ?? ""}"?`}
-        description="The stored file and its indexed vectors will be removed. This cannot be undone."
-        confirmLabel="Delete"
+        title={t("doc.deleteTitle", { name: pendingDelete?.filename ?? "" })}
+        description={t("doc.deleteDesc")}
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
         danger
         onConfirm={() => {
           if (pendingDelete) {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronFirst, ChevronLast } from "lucide-react";
 
 import { pdfjs } from "@/lib/pdfjs";
+import { useI18n } from "@/hooks/useI18n";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
 interface ViewerPageProps {
@@ -96,7 +97,9 @@ function ViewerPage({ doc, pageNumber, width, registerRef }: ViewerPageProps) {
 
 function isAbortLike(error: unknown): boolean {
   const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
-  return /abort/i.test(text) || error instanceof Error && error.name === "RenderingCancelledException";
+  return (
+    /abort/i.test(text) || (error instanceof Error && error.name === "RenderingCancelledException")
+  );
 }
 
 /**
@@ -106,6 +109,7 @@ function isAbortLike(error: unknown): boolean {
  * page currently in view while scrolling.
  */
 export function PdfViewer({ url, title }: { url: string; title: string }) {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
@@ -157,6 +161,8 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
     setPageInput(String(current));
   };
 
+  const jumpTo = (target: number) => scrollToPage(Math.round(target));
+
   const scrollToPage = (target: number) => {
     const container = containerRef.current;
     if (!container) {
@@ -172,8 +178,6 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
     setCurrentPage(clamped);
   };
 
-  const jumpTo = (target: number) => scrollToPage(Math.round(target));
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
@@ -183,8 +187,8 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            aria-label="Jump to first page"
-            title="Jump to first page"
+            aria-label={t("viewer.jumpFirst")}
+            title={t("viewer.jumpFirst")}
             disabled={!doc}
             onClick={() => scrollToPage(1)}
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
@@ -210,14 +214,14 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
                 event.currentTarget.blur();
               }
             }}
-            title="Type a page number and press Enter to jump"
+            title={t("viewer.jumpPage")}
             className="w-14 rounded-md border bg-background px-1.5 py-1 text-center text-[12px] outline-none focus-visible:outline-2 focus-visible:outline-ring"
-            aria-label="Jump to page"
+            aria-label={t("viewer.jumpPage")}
           />
           <button
             type="button"
-            aria-label="Jump to last page"
-            title="Jump to last page"
+            aria-label={t("viewer.jumpLast")}
+            title={t("viewer.jumpLast")}
             disabled={!doc}
             onClick={() => scrollToPage(numPages)}
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
@@ -233,7 +237,7 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
       >
         {error && <p className="py-16 text-center text-[13px] text-error">{error}</p>}
         {!doc && !error && (
-          <p className="py-16 text-center text-[13px] text-muted-foreground">Loading PDF…</p>
+          <p className="py-16 text-center text-[13px] text-muted-foreground">{t("viewer.loading")}</p>
         )}
         {doc && width > 0 && (
           <>
@@ -248,6 +252,9 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
                 }}
               />
             ))}
+            <p className="pb-2 text-center text-[11px] text-muted-foreground">
+              {numPages} {t("viewer.pages")}
+            </p>
           </>
         )}
       </div>

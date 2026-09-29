@@ -3,6 +3,7 @@ import { Check, ChevronDown, X } from "lucide-react";
 import { memo, useState } from "react";
 
 import { Spinner } from "@/components/ui/spinner";
+import { useI18n } from "@/hooks/useI18n";
 import { cn } from "@/lib/utils";
 
 function renderPayload(value: unknown): string {
@@ -40,6 +41,7 @@ function PayloadSection({ label, value, isError }: { label: string; value: unkno
  */
 export const ToolCallCard = memo(function ToolCallCard({ tool }: { tool: ToolInvocation }) {
   const [open, setOpen] = useState(false);
+  const { t } = useI18n();
 
   return (
     <div className="animate-fade-in my-2 overflow-hidden rounded-[10px] border bg-surface">
@@ -58,10 +60,10 @@ export const ToolCallCard = memo(function ToolCallCard({ tool }: { tool: ToolInv
         )}
         <span className="font-medium">{tool.toolName}</span>
         {tool.status === "running" && (
-          <span className="text-[12px] text-muted-foreground">running…</span>
+          <span className="text-[12px] text-muted-foreground">{t("tool.running")}</span>
         )}
         {tool.status === "error" && (
-          <span className="text-[12px] text-error">failed</span>
+          <span className="text-[12px] text-error">{t("tool.failed")}</span>
         )}
         <ChevronDown
           className={cn(
@@ -73,9 +75,13 @@ export const ToolCallCard = memo(function ToolCallCard({ tool }: { tool: ToolInv
 
       {open && (
         <div className="space-y-2.5 border-t px-3 py-2.5">
-          {tool.args !== undefined && <PayloadSection label="Arguments" value={tool.args} />}
+          {tool.args !== undefined && <PayloadSection label={t("tool.arguments")} value={tool.args} />}
           {tool.status !== "running" && tool.result !== undefined && (
-            <PayloadSection label="Result" value={tool.result} isError={tool.status === "error"} />
+            <PayloadSection
+              label={t("tool.result")}
+              value={tool.result}
+              isError={tool.status === "error"}
+            />
           )}
         </div>
       )}

@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/hooks/useI18n";
 import { cn } from "@/lib/utils";
 import type { SessionInfo } from "@/types/agent";
 
@@ -13,12 +14,14 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ sessions, currentSessionId, onSelect, onNewChat, onDelete }: AppSidebarProps) {
+  const { t } = useI18n();
+
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r bg-surface md:flex">
       <div className="p-3">
         <Button variant="outline" className="w-full justify-start" onClick={onNewChat}>
           <Plus className="size-4" />
-          New chat
+          {t("sidebar.newChat")}
         </Button>
       </div>
 
@@ -26,7 +29,7 @@ export function AppSidebar({ sessions, currentSessionId, onSelect, onNewChat, on
         {sessions.length > 0 ? (
           <>
             <p className="px-1 pt-1 pb-1.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-              Recent
+              {t("sidebar.recent")}
             </p>
             <ul className="space-y-0.5">
               {sessions.map((session) => (
@@ -48,7 +51,7 @@ export function AppSidebar({ sessions, currentSessionId, onSelect, onNewChat, on
                     variant="danger-ghost"
                     size="icon-sm"
                     className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100"
-                    aria-label={`Delete ${session.title}`}
+                    aria-label={`${t("sidebar.delete")}: ${session.title}`}
                     onClick={() => onDelete(session.id)}
                   >
                     <Trash2 className="size-3.5" />
@@ -59,7 +62,7 @@ export function AppSidebar({ sessions, currentSessionId, onSelect, onNewChat, on
           </>
         ) : (
           <p className="px-2 pt-1 text-[12.5px] leading-relaxed text-muted-foreground">
-            Conversations will appear here.
+            {t("sidebar.empty")}
           </p>
         )}
       </nav>

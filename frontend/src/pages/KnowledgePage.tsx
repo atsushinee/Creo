@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { ErrorBanner } from "@/components/chat/ErrorBanner";
 import { useTheme } from "@/hooks/useTheme";
+import { useI18n } from "@/hooks/useI18n";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBase";
 import type { KnowledgeBaseInfo } from "@/types/knowledgeBase";
 
@@ -20,6 +21,7 @@ import type { KnowledgeBaseInfo } from "@/types/knowledgeBase";
  */
 export default function KnowledgePage() {
   const { theme, toggleTheme } = useTheme();
+  const { t } = useI18n();
   const kb = useKnowledgeBase();
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [creatingKb, setCreatingKb] = useState(false);
@@ -53,22 +55,29 @@ export default function KnowledgePage() {
                 value={kb.currentKbId ?? ""}
                 onChange={(event) => void kb.selectKb(event.target.value)}
                 className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-[12.5px] outline-none focus-visible:outline-2 focus-visible:outline-ring"
-                aria-label="Knowledge base"
+                aria-label={t("kb.select")}
               >
-                {kb.knowledgeBases.length === 0 && <option value="">No knowledge base</option>}
+                {kb.knowledgeBases.length === 0 && (
+                  <option value="">{t("kb.select")}</option>
+                )}
                 {kb.knowledgeBases.map((base) => (
                   <option key={base.id} value={base.id}>
                     {base.name} ({base.documentCount})
                   </option>
                 ))}
               </select>
-              <Button variant="outline" size="icon-sm" aria-label="New knowledge base" onClick={() => setCreatingKb(true)}>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={t("kb.new")}
+                onClick={() => setCreatingKb(true)}
+              >
                 <Plus className="size-3.5" />
               </Button>
               <Button
                 variant="danger-ghost"
                 size="icon-sm"
-                aria-label="Delete knowledge base"
+                aria-label={t("kb.delete")}
                 disabled={!currentKb}
                 onClick={() => setPendingDeleteKb(currentKb)}
               >
@@ -90,18 +99,18 @@ export default function KnowledgePage() {
               onClick={() => inputRef.current?.click()}
             >
               <Upload className="size-4" />
-              Upload PDF
+              {t("kb.upload")}
             </Button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
             {!currentKb ? (
               <p className="px-1 pt-1 text-[12.5px] leading-relaxed text-muted-foreground">
-                Create a knowledge base, then upload PDFs. Click a card to chat about it.
+                {t("kb.emptyHint")}
               </p>
             ) : kb.documents.length === 0 ? (
               <p className="px-1 pt-1 text-[12.5px] leading-relaxed text-muted-foreground">
-                No documents yet — upload PDFs to index them.
+                {t("kb.noDocs")}
               </p>
             ) : (
               <DocGrid
@@ -125,7 +134,7 @@ export default function KnowledgePage() {
           ) : (
             <div className="flex flex-1 items-center justify-center p-6">
               <p className="text-center text-[13px] text-muted-foreground">
-                Select a document on the left to start a scoped conversation.
+                {t("kb.selectDocChat")}
               </p>
             </div>
           )}
@@ -142,7 +151,7 @@ export default function KnowledgePage() {
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-6">
-              <p className="text-[13px] text-muted-foreground">Select a document to preview it.</p>
+              <p className="text-[13px] text-muted-foreground">{t("kb.selectDocPreview")}</p>
             </div>
           )}
         </aside>
@@ -150,9 +159,10 @@ export default function KnowledgePage() {
 
       {creatingKb && (
         <PromptDialog
-          title="New knowledge base"
-          placeholder="Knowledge base name"
-          confirmLabel="Create"
+          title={t("kb.newTitle")}
+          placeholder={t("kb.namePlaceholder")}
+          confirmLabel={t("common.create")}
+          cancelLabel={t("common.cancel")}
           onConfirm={(name) => {
             setCreatingKb(false);
             void kb.createKb(name, "");
@@ -162,9 +172,10 @@ export default function KnowledgePage() {
       )}
       <ConfirmDialog
         open={pendingDeleteKb !== null}
-        title={`Delete knowledge base "${pendingDeleteKb?.name ?? ""}"?`}
-        description="All uploaded documents, their indexed vectors and pipeline traces will be removed. This cannot be undone."
-        confirmLabel="Delete"
+        title={t("kb.deleteTitle", { name: pendingDeleteKb?.name ?? "" })}
+        description={t("kb.deleteDesc")}
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
         danger
         onConfirm={() => {
           if (pendingDeleteKb) {
