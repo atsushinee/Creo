@@ -59,7 +59,7 @@ export function DocGrid({
   };
 
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="flex flex-col gap-2">
       {documents.map((doc) => (
         <div
           key={doc.id}
