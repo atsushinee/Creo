@@ -83,9 +83,11 @@ class MilvusVectorStore:
         token: str = "",
         dim: int = 1024,
         analyzer: str = "chinese",
+        timeout: float = 60.0,
     ) -> None:
         self._dim = dim
         self._uri = uri
+        self._timeout = timeout
         self._analyzer_params = analyzer_params(analyzer)
         # Fails fast on unreachable/misconfigured endpoints; the caller (main
         # lifespan) treats that as "KB disabled" and logs a warning.
@@ -97,6 +99,9 @@ class MilvusVectorStore:
     @property
     def analyzer_params(self) -> dict[str, Any]:
         return dict(self._analyzer_params)
+
+    def list_collections(self) -> list[str]:
+        return list(self._client.list_collections())
 
     def has_collection(self, name: str) -> bool:
         return bool(self._client.has_collection(name))
@@ -134,7 +139,9 @@ class MilvusVectorStore:
             index_type=sparse_index_type(self._uri),
             metric_type="BM25",
         )
-        self._client.create_collection(name, schema=schema, index_params=index_params)
+        self._client.create_collection(
+            name, schema=schema, index_params=index_params, timeout=self._timeout
+        )
         logger.info(
             "created milvus collection %s (dim=%d, analyzer=%s)",
             name,
@@ -144,18 +151,20 @@ class MilvusVectorStore:
 
     def insert_chunks(self, name: str, rows: list[dict[str, Any]]) -> int:
         """Insert chunk rows: text/dense/doc_id/chunk_index/page_number/metadata."""
-        self._client.insert(collection_name=name, data=rows)
+        self._client.insert(collection_name=name, data=rows, timeout=self._timeout)
         return len(rows)
 
     def delete_doc(self, name: str, doc_id: str) -> None:
         if not self.has_collection(name):
             return
-        self._client.delete(collection_name=name, filter=f'doc_id == "{doc_id}"')
+        self._client.delete(
+            collection_name=name, filter=f'doc_id == "{doc_id}"', timeout=self._timeout
+        )
 
     def drop_collection(self, name: str) -> None:
         if not self.has_collection(name):
             return
-        self._client.drop_collection(name)
+        self._client.drop_collection(name, timeout=self._timeout)
         logger.info("dropped milvus collection %s", name)
 
     def hybrid_search(
@@ -193,5 +202,6 @@ class MilvusVectorStore:
             ranker=RRFRanker(RRF_K),
             limit=top_k,
             output_fields=["text", "doc_id", "chunk_index", "page_number", "metadata"],
+            timeout=self._timeout,
         )
         return [normalize_hit(hit) for hit in (results[0] if results else [])]

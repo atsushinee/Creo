@@ -28,6 +28,30 @@ backend/app/services/unstructured_client.py · backend/app/core/config.py · doc
 
 ---
 
+## [2026-09-29] Zilliz serverless 的 DDL 偶发 DEADLINE_EXCEEDED，cleanup 报错掩盖成功结果
+
+### Problem
+
+冒烟测试全链路（解析→分块→向量化→插入→检索→删除）全部成功，但最后 `drop_collection` 抛 `DEADLINE_EXCEEDED: The upstream server is timing out`，脚本以失败退出——成功结果被清理步骤的噪音掩盖；下一轮重跑又会完整重付 API 费用。
+
+### Cause
+
+serverless 集群的 DDL 路径上游繁忙时会超时（且服务端往往已执行，只是响应没回来）；脚本把"清理失败"当成"测试失败"，且没有任何中间产物缓存。
+
+### Solution
+
+1. `MilvusVectorStore` 全部操作显式 `timeout=60s`；2. 冒烟脚本清理改为 3 次重试 + 启动时自愈清残留 `kb_smoke_*`，清理失败只告警不改变退出码；3. 解析/embedding 按内容指纹缓存到 `data/smoke/`，重跑免费。
+
+### Lesson
+
+"验证成功"与"资源清理"是两个独立结论，finally 里的清理异常必须与主流程解耦；对按调用计费的外部服务，长链路脚本要内置内容寻址缓存，失败重试才不心疼。
+
+### Related
+
+backend/app/services/kb_vector_store.py · backend/scripts/smoke_kb.py · docs/development/TECHNICAL-NOTES.md
+
+---
+
 ## [2026-09-29] httpx 0.28 的 multipart 不再接受 data= 元组列表
 
 ### Problem

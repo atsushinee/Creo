@@ -80,7 +80,8 @@ def test_parse_pdf_maps_elements_to_dicts(tmp_path: Path) -> None:
     }
     assert elements[1]["metadata"]["text_as_html"] == "<table>总资产</table>"
     call = fake.calls[0]
-    assert call["include"] == ["text_as_html"]
+    assert call["output"] == "elements"  # include is only valid with output=elements
+    assert call["include"] == ["table_html"]  # only coordinates/table_html are allowed
     assert call["profile"] == "best"
 
 

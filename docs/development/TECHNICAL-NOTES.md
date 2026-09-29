@@ -12,12 +12,16 @@
 
 - **`ParseResult.elements` 恒返回**（必填字段，"canonical document"）；`markdown` 仅在请求 markdown 表示时有值。我们直接消费 elements，不依赖 markdown。
 - **分块搬到客户端**：v2 无 chunking 参数。`pack_elements()`：连续叙事元素贪心打包（软限制 = 80% max_chars）、Table 独立成块（text_as_html 优先）、单元素超长硬切、<20 字符丢弃；块页码取首个元素的 `page_number`。
-- `Element.metadata.page_number`（1-based）默认返回；`text_as_html` 需显式 `include=["text_as_html"]`。
+- `Element.metadata.page_number`（1-based）默认返回。表格 HTML 的请求投影叫 **`table_html`**（include 合法值仅 `coordinates` / `table_html`，且必须 `output="elements"`，默认 markdown 下 include 会 400），但**响应字段仍叫 `metadata.text_as_html`**——请求/响应命名错位，两次 400 实测确认。
 - **profile 取代 strategy**：`balanced | best | fast`（best ≈ 旧 hi_res 质量档）。OCR 语言/策略参数在 v2 不存在，对应配置项删除。
 - `parse.run(wait_seconds=None)` → 不发 Prefer 头，**同步阻塞**到任务完成（跑在 BackgroundTasks 线程池，不影响事件循环）。
 - **SDK 的 `server_url` 不能带 `/api/v2`**：SDK 自行拼接 `/api/v2/...` 路径。适配层 `_normalize_server_url` 剥离该后缀；`Settings` 用 `AliasChoices` 兼容旧变量名 `CREO_UNSTRUCTURED_API_URL`。
 - `TransformClient` 构造为 keyword-only（`api_key/server_url/timeout_seconds/retries: RetryConfig`），缺 key 构造即抛——lifespan 的缺配置检查先行拦截。
 - 内置重试：GET/DELETE 对任意瞬时失败重试；写操作只在"确定未到达服务端"时重试（连接拒绝/DNS），读超时与 5xx 不重试——我们在管线层有自己的失败兜底（文档状态机）。
+
+**Zilliz serverless（us-west-1）实测**：DDL（drop/create_collection）偶发 `DEADLINE_EXCEEDED: The upstream server is timing out`（插入/检索反而稳定）。对策：`MilvusVectorStore` 所有操作显式 `timeout=60s`；冒烟脚本清理 3 次重试 + 启动时自愈清残留 `kb_smoke_*`（serverless 超时后服务端往往已执行，重试时 has_collection 为 False 会自然跳过）。
+
+**冒烟测试脚本**：`backend/scripts/smoke_kb.py`（不属 pytest，手动运行）。解析与 embedding 两段付费调用按内容指纹缓存于 `backend/data/smoke/`（parse/{pdf_sha}-{profile}.json、embed/{texts_sha}-{model}-{dim}.json），中途失败重跑不再重复计费；控制台输出 tee 到 `data/smoke/run.log`。真实链路结论：54 页《公司章程》profile=best 解析 220s / 842 elements → 33 chunks → bge-m3 33×1024 → serverless 写入/检索/删除全部正常，RRF 分数量级符合预期（~1/61）。
 
 **Zilliz 索引自适应**：`sparse_index_type(uri)` —— uri 含 "zilliz"（zillizcloud.com / *.cloud.zilliz.com，dedicated 与 serverless）→ AUTOINDEX；自托管 Milvus → 显式 SPARSE_INVERTED_INDEX（AUTOINDEX 不覆盖 BM25 稀疏字段）。
 

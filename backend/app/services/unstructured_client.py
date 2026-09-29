@@ -62,13 +62,20 @@ class UnstructuredClient:
     def parse_pdf(self, path: Path, filename: str) -> list[dict]:
         """Parse one PDF into element dicts for the ingestion pipeline.
 
-        `include=["text_as_html"]` requests the table HTML projection;
-        `page_number` (one-based) is returned by default on element metadata.
+        `output="elements"` selects the element representation (required for
+        `include`, which is rejected on the default markdown output). The only
+        include projections are "coordinates" and "table_html" — the table
+        HTML then arrives on element metadata `text_as_html` (naming differs
+        between request and response). `page_number` (one-based) is always
+        returned on element metadata. All verified against the live API.
         """
         try:
             with path.open("rb") as pdf:
                 result = self._client.parse.run(
-                    input=pdf, include=["text_as_html"], profile=self._profile
+                    input=pdf,
+                    output="elements",
+                    include=["table_html"],
+                    profile=self._profile,
                 )
         except Exception as exc:
             raise UnstructuredError(f"unstructured parse failed: {exc}") from exc
