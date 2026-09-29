@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ChatMessage } from "@/types/agent";
 
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
@@ -53,7 +54,12 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
   );
 }
 
-export function MessageItem({ message }: { message: ChatMessage }) {
+/**
+ * Memoized: during streaming only the in-flight message object gets a new
+ * reference (the store updates immutably per message), so finished messages
+ * skip re-render/re-parse on every token delta.
+ */
+export const MessageItem = memo(function MessageItem({ message }: { message: ChatMessage }) {
   return (
     <article
       className={cn(
@@ -64,4 +70,4 @@ export function MessageItem({ message }: { message: ChatMessage }) {
       {message.role === "user" ? <UserMessage message={message} /> : <AssistantMessage message={message} />}
     </article>
   );
-}
+});

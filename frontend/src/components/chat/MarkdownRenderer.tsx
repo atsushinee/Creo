@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ComponentPropsWithoutRef } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -66,7 +67,13 @@ const components: Components = {
 };
 
 /** Renders assistant markdown content (GFM + restrained code highlighting). */
-export function MarkdownRenderer({ content, className }: { content: string; className?: string }) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({
+  content,
+  className,
+}: {
+  content: string;
+  className?: string;
+}) {
   return (
     <div className={cn("min-w-0 break-words", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
@@ -74,4 +81,4 @@ export function MarkdownRenderer({ content, className }: { content: string; clas
       </ReactMarkdown>
     </div>
   );
-}
+});

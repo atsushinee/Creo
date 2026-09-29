@@ -6,6 +6,9 @@
 
 ### Fixed
 
+- **长对话渲染优化**：MessageItem / MarkdownRenderer / ToolCallCard / Composer 全部 memo 化——流式输出期间仅重渲染正在生成的消息（store 的不可变更新保证未完成消息引用不变），历史越长收益越明显。
+- **容错补强**：启动恢复同时覆盖 `pending`（上传已受理但后台任务未及启动）与 `processing` 的中断文档，标记 failed 并提示重试（已完成阶段缓存不重复计费）；KB 登记在线但远端解析栈未配置时，上传接口返回更精确的 503 提示。
+
 - **持久化全量化（重启不丢数据）**：会话列表与对话记忆（含文档定向对话）从内存改为 SQLite 落盘（`data/sessions.sqlite`、`data/checkpoints.sqlite`）；Milvus 连接改为懒式——启动零网络调用，Zilliz 不可达只影响当次向量操作，KB 登记/文件/追踪永远在线；重启时自动把中断的入库任务标记为 failed（可一键重试，已完成阶段走缓存）；Knowledge 页挂载后自动选中第一个知识库（修复"重启后看起来全没了"的观感问题）。测试密闭性同步升级（per-test 数据目录，测试不再触碰真实 `data/`）。
 
 - 修复写在 `backend/.env` 里的 provider 原生 key（如 `OPENAI_API_KEY`）不生效的问题：启动时以绝对路径将 `.env` 载入进程环境（真实环境变量优先），且不再依赖启动时的工作目录；`python-dotenv` 提升为直接依赖。

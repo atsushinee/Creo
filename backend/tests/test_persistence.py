@@ -38,14 +38,18 @@ def test_fail_interrupted_ingestions_marks_stale_processing(tmp_path) -> None:
     service.update_document_status(doc.id, "processing")
     other = service.save_upload(kb.id, "b.pdf", io.BytesIO(b"%PDF2"), max_bytes=1024)
     service.update_document_status(other.id, "ready")
+    # A task that never started (killed between upload response and run).
+    never_started = service.save_upload(kb.id, "c.pdf", io.BytesIO(b"%PDF3"), max_bytes=1024)
 
     marked = service.fail_interrupted_ingestions()
 
-    assert marked == 1
+    assert marked == 2  # processing + never-started pending
     failed = service.get_document(doc.id)
     assert failed is not None
     assert failed.status == "failed"
     assert failed.error is not None and "restarted" in failed.error
+    pending = service.get_document(never_started.id)
+    assert pending is not None and pending.status == "failed"
     ready = service.get_document(other.id)
     assert ready is not None and ready.status == "ready"
     assert service.fail_interrupted_ingestions() == 0  # idempotent

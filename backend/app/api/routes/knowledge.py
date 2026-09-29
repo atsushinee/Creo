@@ -131,7 +131,15 @@ async def upload_document(
     ingestion: IngestionDep,
 ) -> KbDocumentOut:
     service = _require(kb_service)
-    ingestion_service = _require(ingestion)
+    if ingestion is None:
+        # Registry is up but the remote pipeline is not configured — be
+        # precise about what is missing instead of the generic KB-disabled.
+        raise HTTPException(
+            status_code=503,
+            detail="ingestion is unavailable: configure CREO_MILVUS_URI /"
+            " CREO_UNSTRUCTURED_API_KEY / CREO_KB_EMBEDDING_BASE_URL",
+        )
+    ingestion_service = ingestion
     kb = _require_kb(service, kb_id)
 
     filename = file.filename or "document.pdf"

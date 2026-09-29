@@ -1,6 +1,6 @@
 import type { ToolInvocation } from "@/types/agent";
 import { Check, ChevronDown, X } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -35,9 +35,10 @@ function PayloadSection({ label, value, isError }: { label: string; value: unkno
 
 /**
  * Tool calls are first-class citizens (DESIGN.md §5): collapsed by default,
- * with an explicit running / success / error state.
+ * with an explicit running / success / error state. Memoized so finished
+ * cards skip re-render during token streaming.
  */
-export function ToolCallCard({ tool }: { tool: ToolInvocation }) {
+export const ToolCallCard = memo(function ToolCallCard({ tool }: { tool: ToolInvocation }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -80,4 +81,4 @@ export function ToolCallCard({ tool }: { tool: ToolInvocation }) {
       )}
     </div>
   );
-}
+});

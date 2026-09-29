@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-09-30（续）
+
+### 长对话渲染优化 + 评审补强（容错清单）
+
+**memo 化的前提**：`agentStore.applyAgentEvent` 的更新是不可变且按消息粒度的——`mapMessage` 只替换被触及消息的对象，未触及消息引用不变。因此 `memo` 包一层即可让流式期间只重渲染在流的消息：`MessageItem`（省掉全部历史消息的 Markdown 重解析，这是长对话最大开销）、`MarkdownRenderer`、`ToolCallCard`、`Composer`（props 为布尔值 + 稳定回调）。`useDocChat` 的 `applyDocEvent` 同样保持消息粒度不可变 ✓。`React.memo` 未覆盖 AppSidebar/AppHeader——ChatPage 传给它们的回调（如内联箭头函数、依赖 `messagesBySession` 的 selectSession）每个 token 都变，memo 无效；侧栏/头部本身渲染很轻，暂不为此增加回调稳定化管道。
+
+**评审发现的容错缺口（已修）**：启动恢复原先只标记 `processing`——若进程在"上传响应已返回、后台任务未及启动"的窗口被杀，文档会永远停在 `pending`、前端无限轮询。现恢复覆盖 `pending + processing`。另把"登记在线但解析栈未配置"场景的上传 503 文案精确化（与"整个 KB 禁用"区分）。
+
+---
+
 ## 2026-09-30
 
 ### 持久化全量化（重启不丢任何数据）+ KB 栈与远端服务解耦

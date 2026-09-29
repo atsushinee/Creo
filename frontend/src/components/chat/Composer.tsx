@@ -1,5 +1,5 @@
 import { ArrowUp, Square } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { memo, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -12,7 +12,12 @@ interface ComposerProps {
 
 const MAX_TEXTAREA_HEIGHT = 160;
 
-export function Composer({ isBusy, streaming, onSend, onStop }: ComposerProps) {
+export const Composer = memo(function Composer({
+  isBusy,
+  streaming,
+  onSend,
+  onStop,
+}: ComposerProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -82,4 +87,4 @@ export function Composer({ isBusy, streaming, onSend, onStop }: ComposerProps) {
       </div>
     </div>
   );
-}
+});

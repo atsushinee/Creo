@@ -397,19 +397,20 @@ class SqliteKnowledgeService:
         ]
 
     def fail_interrupted_ingestions(self) -> int:
-        """Startup recovery: documents stuck in `processing` from a restart can
-        never resume (the background task died with the process) — mark them
-        failed so the UI offers reingest instead of polling forever."""
+        """Startup recovery: no background task survives a restart, so any
+        document still in `pending` (task never started) or `processing`
+        (killed mid-run) is marked failed — the UI then offers reingest
+        instead of polling forever. Completed stages stay cached."""
         with self._lock, self._conn:
             rows = self._conn.execute(
-                "SELECT id FROM document WHERE status = 'processing'"
+                "SELECT id FROM document WHERE status IN ('pending', 'processing')"
             ).fetchall()
             if rows:
                 self._conn.execute(
                     "UPDATE document SET status = 'failed', error = ?, updated_at = ?"
-                    " WHERE status = 'processing'",
+                    " WHERE status IN ('pending', 'processing')",
                     (
-                        "backend restarted mid-ingestion — click re-ingest to retry "
+                        "backend restarted before ingestion finished — click re-ingest to retry "
                         "(completed stages are cached)",
                         _utcnow().isoformat(),
                     ),
