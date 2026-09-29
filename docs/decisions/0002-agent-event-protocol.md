@@ -2,7 +2,26 @@
 
 ## Status
 
-Accepted（2026-09-25）
+Accepted（2026-09-25）；Update 1（2026-09-30）：新增 `thinking_delta`
+
+## Update 1（2026-09-30）：thinking_delta 事件
+
+推理模型（DashScope/Qwen 的 `reasoning_content`、Anthropic 式 thinking 内容块）的思考文本需要透出到 UI。新增事件：
+
+```text
+thinking_delta   { content: string }  思考增量
+```
+
+约束与决策：
+
+- 运行时只**透传**模型自带的推理增量（`additional_kwargs.reasoning_content` / thinking 块），不生成、不解释、不参与最终答案；历史回放（`get_history`）不含思考内容——UI 历史只渲染答案与工具。
+- 事件不带 messageId：前端附加到当前流式中的助手消息首部（无流式消息则创建占位消息）；`message_start/message_end` 生命周期不变。
+- 兼容性：非推理模型不产生该事件，前端零影响。
+- 前后端镜像同步（`models/events.py` / `types/agent.ts`）。
+
+---
+
+（以下为原文档）
 
 ## Context
 

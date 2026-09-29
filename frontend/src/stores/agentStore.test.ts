@@ -35,6 +35,29 @@ function messagesOf(state: AgentState, sessionId: string): ChatMessage[] {
 describe("applyAgentEvent", () => {
   const sessionId = "s1";
 
+  it("thinking deltas accumulate at the head of the streaming message", () => {
+    // Real backend order: message_start fires (message opened), then thinking
+    // deltas, then text deltas — all into one streaming message.
+    const state = feed(initialState(sessionId), sessionId, [
+      { type: "run_started", runId: "r1" },
+      { type: "message_start", messageId: "m1" },
+      { type: "thinking_delta", content: "先分析问题。" },
+      { type: "thinking_delta", content: "再分步计算。" },
+      { type: "message_delta", messageId: "m1", content: "答案是 56088。" },
+      { type: "message_end", messageId: "m1" },
+      { type: "run_finished", runId: "r1" },
+    ]);
+
+    const messages = messagesOf(state, sessionId);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].parts[0]).toEqual({
+      kind: "thinking",
+      text: "先分析问题。再分步计算。",
+    });
+    expect(messages[0].content).toBe("答案是 56088。");
+    expect(messages[0].parts[1]).toEqual({ kind: "text", text: "答案是 56088。" });
+  });
+
   it("full tool call flow produces text, tool and final answer", () => {
     const state = feed(initialState(sessionId), sessionId, [
       { type: "run_started", runId: "r1" },

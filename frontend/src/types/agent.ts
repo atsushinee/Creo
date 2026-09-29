@@ -24,6 +24,12 @@ export interface MessageEndEvent {
   messageId: string;
 }
 
+/** Reasoning-model thinking increment (ADR-0002 Update 1). */
+export interface ThinkingDeltaEvent {
+  type: "thinking_delta";
+  content: string;
+}
+
 export interface ToolStartEvent {
   type: "tool_start";
   toolCallId: string;
@@ -53,6 +59,7 @@ export type AgentEvent =
   | MessageStartEvent
   | MessageDeltaEvent
   | MessageEndEvent
+  | ThinkingDeltaEvent
   | ToolStartEvent
   | ToolResultEvent
   | ErrorEvent
@@ -74,6 +81,7 @@ export interface ToolInvocation {
 
 export type MessagePart =
   | { kind: "text"; text: string }
+  | { kind: "thinking"; text: string }
   | { kind: "tool"; tool: ToolInvocation };
 
 export interface ChatMessage {

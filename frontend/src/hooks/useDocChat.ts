@@ -49,6 +49,16 @@ function applyDocEvent(message: ChatMessage, event: AgentEvent): ChatMessage {
             : part,
         ),
       };
+    case "thinking_delta": {
+      const parts =
+        message.parts[0]?.kind === "thinking"
+          ? [
+              { kind: "thinking" as const, text: message.parts[0].text + event.content },
+              ...message.parts.slice(1),
+            ]
+          : [{ kind: "thinking" as const, text: event.content }, ...message.parts];
+      return { ...message, parts };
+    }
     case "error":
       return { ...message, status: "error" };
     default:

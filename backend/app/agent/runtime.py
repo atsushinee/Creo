@@ -35,6 +35,7 @@ from app.models.events import (
     MessageStart,
     RunFinished,
     RunStarted,
+    ThinkingDelta,
     ToolResult,
     ToolStart,
 )
@@ -53,6 +54,29 @@ def extract_text(content: Any) -> str:
                 parts.append(block)
             elif isinstance(block, dict) and block.get("type") == "text":
                 parts.append(str(block.get("text", "")))
+        return "".join(parts)
+    return ""
+
+
+def extract_reasoning(chunk: Any) -> str:
+    """Reasoning text from reasoning-model chunks (ADR-0002 Update 1).
+
+    Two shapes seen in the wild: OpenAI-compatible endpoints stream it as
+    `additional_kwargs.reasoning_content` (DashScope/Qwen, DeepSeek-R1, …);
+    Anthropic-style providers emit thinking content blocks.
+    """
+    kwargs = getattr(chunk, "additional_kwargs", None) or {}
+    reasoning = kwargs.get("reasoning_content") or kwargs.get("reasoning")
+    if isinstance(reasoning, str):
+        return reasoning
+    content = getattr(chunk, "content", None)
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") in ("thinking", "reasoning"):
+                text = block.get("thinking") or block.get("reasoning") or block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
         return "".join(parts)
     return ""
 
@@ -169,9 +193,14 @@ class _EventConverter:
         if not isinstance(chunk, AIMessageChunk):
             return []
         events: list[AgentEvent] = []
+        reasoning = extract_reasoning(chunk)
         text = extract_text(chunk.content)
-        if text:
+        if reasoning or text:
             events.extend(self._open_message(chunk.id))
+        if reasoning:
+            assert self._open_message_id is not None
+            events.append(ThinkingDelta(content=reasoning))
+        if text:
             assert self._open_message_id is not None
             events.append(MessageDelta(messageId=self._open_message_id, content=text))
         if getattr(chunk, "chunk_position", None) == "last":

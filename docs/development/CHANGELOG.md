@@ -21,6 +21,8 @@
 
 ### Added
 
+- **思考过程可视化（ADR-0002 Update 1）**：推理模型（Qwen/DeepSeek-R1 等）的思考增量以 `thinking_delta` 事件透出，对话中在答案上方显示可折叠的 "Thinking…" 块——思考时自动展开、答案开始后自动收起，可随时点开回看；仅透传模型自带推理，历史回放不含思考内容。
+- **知识库封面图格**：左侧文档列表改为"封面即卡片"——第一页缩略图占满卡片，文件名叠加在底部渐变上、状态点左上、悬停右上浮出追踪/重试/删除操作。
 - **知识库 v1（ADR-0004）**：支持创建多个知识库（分类）并上传 PDF，后台经 Unstructured Transform API 解析（profile=best，含页码与表格 HTML）并做客户端分块，以 bge-m3 密集向量 + Milvus 服务端 BM25 稀疏向量双通道写入 Zilliz（云上 AUTOINDEX 自适应）；Agent 新增 `search_knowledge_base` 工具做 BM25/Dense 混合检索并引用出处；前端新增 `/knowledge` 管理页（上传、解析状态轮询、失败重试、删除、**pdf.js 内联预览**、**链路追踪时间线**）。付费阶段（解析/向量化）按内容指纹缓存（`data/kb/_cache/`），失败重跑与同内容重复上传零重复计费；删除知识库级联清理登记与追踪数据；KB/文档删除均需二次确认。默认关闭：`CREO_KB_ENABLED=true` 且配齐 `CREO_MILVUS_URI/TOKEN`、`CREO_UNSTRUCTURED_API_KEY`、`CREO_KB_EMBEDDING_*` 后启用；未配齐时 KB 端点返回 503、工具不注册，聊天主链路不受影响。
 - **知识库三栏工作台 + 文档定向对话**：Knowledge 页重构为 Dify 风格三栏（文档卡片以第一页作封面、中栏与选中 PDF 对话、右栏连续滚动预览）；定向对话绑定文档级 Agent——检索强制过滤到该 PDF、越界问题拒答，会话记忆按文档隔离。新增 **Recall test** 召回测试页：同一查询三路对比（混合 / 仅密集 / 仅稀疏），为后续 Rerank 决策提供观测依据。
 - 新增直接依赖：`unstructured-transform-client`（Transform API 官方 SDK）、`pymilvus`（仅 `services/kb_vector_store.py` 可 import，边界脚本强制）、`httpx`（自 dev 组提升为运行时依赖）、`python-multipart`（multipart 上传）；前端新增 `pdfjs-dist`（PDF 预览）。

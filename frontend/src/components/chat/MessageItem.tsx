@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { ChatMessage } from "@/types/agent";
 
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { ThinkingBlock } from "@/components/chat/ThinkingBlock";
 import { AgentStatus } from "@/components/agent/AgentStatus";
 import { ToolCallCard } from "@/components/tool/ToolCallCard";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,8 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
       {message.parts.map((part, index) =>
         part.kind === "tool" ? (
           <ToolCallCard key={part.tool.toolCallId} tool={part.tool} />
+        ) : part.kind === "thinking" ? (
+          <ThinkingBlock key={`thinking-${index}`} text={part.text} active={streaming && index === lastIndex} />
         ) : (
           <div key={`text-${index}`} className="min-w-0">
             <MarkdownRenderer content={part.text} />

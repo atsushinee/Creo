@@ -13,6 +13,7 @@ EventType = Literal[
     "message_start",
     "message_delta",
     "message_end",
+    "thinking_delta",
     "tool_start",
     "tool_result",
     "error",
@@ -45,6 +46,14 @@ class MessageEnd(BaseModel):
     messageId: str
 
 
+class ThinkingDelta(BaseModel):
+    """Reasoning-model thinking increment (ADR-0002 Update 1). Frontend
+    attaches it to the current streaming assistant message."""
+
+    type: Literal["thinking_delta"] = "thinking_delta"
+    content: str
+
+
 class ToolStart(BaseModel):
     type: Literal["tool_start"] = "tool_start"
     toolCallId: str
@@ -74,6 +83,7 @@ AgentEvent = (
     | MessageStart
     | MessageDelta
     | MessageEnd
+    | ThinkingDelta
     | ToolStart
     | ToolResult
     | ErrorEvent

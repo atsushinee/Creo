@@ -69,6 +69,9 @@ export function applyAgentEvent(state: AgentState, sessionId: string, event: Age
         return { ...message, content: message.content + event.content, parts };
       });
 
+    case "thinking_delta":
+      return appendThinking(state, sessionId, event.content);
+
     case "message_end":
       return mapMessage(state, sessionId, event.messageId, (message) =>
         message.status === "streaming" ? { ...message, status: "complete" } : message,
@@ -133,6 +136,36 @@ function appendTextPart(parts: MessagePart[], delta: string): MessagePart[] {
     return [...parts.slice(0, -1), { kind: "text", text: last.text + delta }];
   }
   return [...parts, { kind: "text", text: delta }];
+}
+
+/** Thinking lives at the head of the message, before text and tool parts. */
+function appendThinkingPart(parts: MessagePart[], delta: string): MessagePart[] {
+  const first = parts[0];
+  if (first?.kind === "thinking") {
+    return [{ kind: "thinking", text: first.text + delta }, ...parts.slice(1)];
+  }
+  return [{ kind: "thinking", text: delta }, ...parts];
+}
+
+function appendThinking(state: AgentState, sessionId: string, delta: string): AgentState {
+  const messages = state.messages[sessionId] ?? [];
+  const last = messages[messages.length - 1];
+  if (last?.role === "assistant" && last.status === "streaming") {
+    return withMessages(state, sessionId, [
+      ...messages.slice(0, -1),
+      { ...last, parts: appendThinkingPart(last.parts, delta) },
+    ]);
+  }
+  // No streaming assistant message yet: hold the thinking until text arrives.
+  const holder: ChatMessage = {
+    id: localId("assistant"),
+    role: "assistant",
+    content: "",
+    parts: [{ kind: "thinking", text: delta }],
+    status: "streaming",
+    createdAt: nowIso(),
+  };
+  return withMessages(state, sessionId, [...messages, holder]);
 }
 
 function attachToolInvocation(state: AgentState, sessionId: string, tool: ToolInvocation): AgentState {

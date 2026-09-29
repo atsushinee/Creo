@@ -3,7 +3,6 @@ import { History, RotateCcw, Trash2 } from "lucide-react";
 
 import { DocThumbnail } from "@/components/knowledge/DocThumbnail";
 import { ConfirmDialog } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { KbDocumentInfo, PipelineEventInfo } from "@/types/knowledgeBase";
 
@@ -32,7 +31,11 @@ function formatSize(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Document cards: page-1 cover fills the card width, info below. */
+/**
+ * Compact cover tiles (card = one page-1 cover): filename/status/actions are
+ * overlaid on the image — bottom scrim with the name, status dot top-left,
+ * hover actions top-right. The trace timeline expands below the tile.
+ */
 export function DocGrid({
   documents,
   traceByDoc,
@@ -56,70 +59,86 @@ export function DocGrid({
   };
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="grid grid-cols-2 gap-2">
       {documents.map((doc) => (
         <div
           key={doc.id}
           className={cn(
-            "group cursor-pointer overflow-hidden rounded-lg border bg-surface transition-colors",
+            "group cursor-pointer overflow-hidden rounded-lg border transition-colors",
             doc.id === selectedDocId
               ? "border-primary/60 ring-1 ring-ring"
               : "hover:border-primary/40",
           )}
           onClick={() => onSelect(doc)}
+          title={`${doc.filename} · ${doc.status}${
+            doc.status === "ready" ? ` · ${doc.chunkCount} chunks` : ""
+          } · ${formatSize(doc.size)}`}
         >
-          <DocThumbnail url={onGetFileUrl(doc.id)} />
-          <div className="p-2">
-            <p className="truncate text-[12.5px] font-medium" title={doc.filename}>
-              {doc.filename}
-            </p>
-            <div className="flex items-center gap-1.5 pt-1">
-              <span className={cn("size-1.5 shrink-0 rounded-full", statusDot[doc.status])} />
-              <span className="truncate text-[11px] text-muted-foreground">
-                {doc.status === "ready" ? `${doc.chunkCount} chunks` : doc.status}
-                {" · "}
-                {formatSize(doc.size)}
-              </span>
-              <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Trace ${doc.filename}`}
+          <div className="relative">
+            <DocThumbnail url={onGetFileUrl(doc.id)} />
+
+            <span
+              className={cn(
+                "absolute top-1.5 left-1.5 size-2 rounded-full ring-1 ring-white/70",
+                statusDot[doc.status],
+              )}
+              aria-label={doc.status}
+            />
+
+            <div className="absolute top-1 right-1 flex items-center gap-0.5 rounded-md bg-black/55 p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+              <button
+                type="button"
+                aria-label={`Trace ${doc.filename}`}
+                title="Pipeline trace"
+                className="flex size-6 cursor-pointer items-center justify-center rounded text-white transition-colors hover:bg-white/20"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleTrace(doc);
+                }}
+              >
+                <History className="size-3.5" />
+              </button>
+              {doc.status === "failed" && (
+                <button
+                  type="button"
+                  aria-label={`Re-ingest ${doc.filename}`}
+                  title="Re-ingest"
+                  className="flex size-6 cursor-pointer items-center justify-center rounded text-white transition-colors hover:bg-white/20"
                   onClick={(event) => {
                     event.stopPropagation();
-                    toggleTrace(doc);
+                    onReingest(doc.id);
                   }}
                 >
-                  <History className="size-3" />
-                </Button>
-                {doc.status === "failed" && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Re-ingest ${doc.filename}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onReingest(doc.id);
-                    }}
-                  >
-                    <RotateCcw className="size-3" />
-                  </Button>
-                )}
-                <Button
-                  variant="danger-ghost"
-                  size="icon-sm"
-                  aria-label={`Delete ${doc.filename}`}
-                  disabled={doc.status === "processing"}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setPendingDelete(doc);
-                  }}
-                >
-                  <Trash2 className="size-3" />
-                </Button>
-              </span>
+                  <RotateCcw className="size-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label={`Delete ${doc.filename}`}
+                title="Delete"
+                disabled={doc.status === "processing"}
+                className="flex size-6 cursor-pointer items-center justify-center rounded text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPendingDelete(doc);
+                }}
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
+
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-1.5 pt-4 pb-1">
+              <p className="truncate text-[11px] font-medium text-white" title={doc.filename}>
+                {doc.filename}
+              </p>
+              {doc.error && (
+                <p className="truncate text-[10px] text-red-300" title={doc.error}>
+                  {doc.error}
+                </p>
+              )}
             </div>
           </div>
+
           {traceDocId === doc.id && (
             <div className="border-t px-2 py-1.5" onClick={(event) => event.stopPropagation()}>
               {(traceByDoc[doc.id] ?? []).length === 0 ? (
