@@ -16,8 +16,8 @@ dist/
 *.local
 
 # --- Env & secrets ---
-.env
-.env.*
+# Any .env variant (.env, .env1, .env.backup, ...) except the example file.
+.env*
 !.env.example
 
 # --- Editors / OS ---
