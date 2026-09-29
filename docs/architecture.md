@@ -73,18 +73,27 @@ agentStore.applyAgentEvent() → UI State
 
 | 路径 | 职责 |
 | --- | --- |
-| `app/main.py` | FastAPI 工厂、CORS、日志初始化 |
+| `app/main.py` | FastAPI 工厂、CORS、日志初始化、KB 栈装配（ADR-0004，失败降级为禁用） |
 | `app/api/routes/chat.py` | POST /api/chat → SSE StreamingResponse（编码，不做逻辑） |
 | `app/api/routes/sessions.py` | 会话列表 / 历史消息 / 删除 |
+| `app/api/routes/knowledge.py` | 知识库 / 文档管理（multipart 上传、状态查询；不做解析逻辑） |
 | `app/api/routes/health.py` | GET /api/health |
 | `app/agent/agent.py` | 构建 DeepAgents 图（唯一 import deepagents 的地方） |
 | `app/agent/runtime.py` | 把 DeepAgents 原始流转换为 Creo AgentEvent |
 | `app/agent/model.py` | LLM 模型初始化（init_chat_model） |
 | `app/agent/config.py` | Agent 相关配置（模型名、系统提示词） |
 | `app/tools/demo_tools.py` | calculator / get_current_time（Tool 独立，Agent 只注册） |
+| `app/tools/knowledge_tools.py` | `search_knowledge_base` 工具工厂（注入 KbSearchService，ADR-0004） |
 | `app/models/chat.py` | 请求 / 响应 Pydantic 模型 |
+| `app/models/knowledge.py` | 知识库 API 请求 / 响应模型 |
 | `app/models/events.py` | **Creo Agent Event 协议（单一事实来源）** |
 | `app/services/session_service.py` | 会话存储（当前内存实现，接口隔离） |
+| `app/services/kb_service.py` | 知识库/文档登记（SQLite + 文件目录，接口隔离） |
+| `app/services/unstructured_client.py` | Unstructured Partition HTTP 客户端（httpx） |
+| `app/services/embedding_client.py` | OpenAI 兼容 /embeddings 客户端（bge-m3，分批+重试） |
+| `app/services/kb_vector_store.py` | Milvus 封装（**唯一 import pymilvus 的地方**；服务端 BM25 Function） |
+| `app/services/ingestion_service.py` | 入库管线编排（解析→切块规整→向量化→写入；状态机） |
+| `app/services/kb_search.py` | 混合检索编排（hybrid_search + 跨库 RRF） |
 | `app/core/config.py` | pydantic-settings 配置（前缀 `CREO_`） |
 | `app/core/logging.py` | 日志初始化 |
 
@@ -127,9 +136,26 @@ source_added / agent_status
 
 - Tool 独立存在于 `backend/app/tools/`，Agent 只负责注册（`create_deep_agent(tools=...)`）。
 - 新增 Tool **不能修改 UI 核心**：UI 通过 `tool_start` / `tool_result` 事件泛化渲染任何工具。
-- 当前：`calculator`（AST 安全求值）、`get_current_time`。
-- 预留（不实现）：`web_search` / `database` / `file_search` / `python` / `mcp` / `knowledge_search`。
-- UI 演进路径（借鉴 OpenBitFun flow_chat/tool-cards 模式）：`ToolCallCard` 保持通用兜底，未来按 `toolName` 增加覆盖组件（如 calculator 格式化展示），以注册表方式接入，不改事件协议。
+- 当前：`calculator`（AST 安全求值）、`get_current_time`、`search_knowledge_base`（知识库混合检索，ADR-0004，KB 启用时注册）。
+- 预留（不实现）：`web_search` / `database` / `file_search` / `python` / `mcp`。
+- UI 演进路径（借鉴 OpenBitFun flow_chat/tool-cards 模式）：`ToolCallCard` 保持通用兜底，未来按 `toolName` 增加覆盖组件（如 calculator 格式化展示、检索来源卡片），以注册表方式接入，不改事件协议。
+
+### 知识库（KB v1，ADR-0004）
+
+```text
+POST /api/kb/{id}/documents (multipart)
+ ↓ 保存原件 + sha256 去重 + SQLite 登记（pending）
+BackgroundTasks（线程池）→ IngestionService
+ ↓ Unstructured /general/v0/general（hi_res + by_title 切块）
+ ↓ 切块规整（去碎块 / 表格取 text_as_html / 保留页码）
+ ↓ OpenAI 兼容 /embeddings（bge-m3 dense，分批+重试）
+ ↓ MilvusClient.insert（sparse 由服务端 BM25 Function 从 text 自动生成）
+SQLite 状态 → ready/failed ← 前端轮询 GET /api/kb/{id}/documents
+```
+
+- 检索：Agent 工具 `search_knowledge_base` → `KbSearchService`（每 KB `hybrid_search`：dense COSINE + sparse BM25，`RRFRanker(60)`）→ 跨库 RRF 融合。
+- 一个 KB = 本地目录 + 一个 Milvus collection（`kb_{slug}_{id8}`）；分析器与 dim 在建 collection 时固定。
+- 配置：`CREO_KB_ENABLED` + `CREO_MILVUS_URI/TOKEN` + `CREO_UNSTRUCTURED_API_URL` + `CREO_KB_EMBEDDING_*`；未配齐时 KB 端点返回 503、工具不注册，主链路不受影响。
 
 ---
 
@@ -151,7 +177,7 @@ source_added / agent_status
 
 | 未来方向 | 当前预留的接缝 |
 | --- | --- |
-| RAG / Knowledge | `Knowledge` 独立顶层模块；事件协议可加 `source_added` |
+| RAG / Knowledge | **v1 已实现**（ADR-0004：PDF + BM25/Dense 混合检索）；深水区（多格式 / Rerank / GraphRAG）仍预留；事件协议可加 `source_added` |
 | MCP | Tools 目录新增 `mcp.py`，UI 泛化渲染即可 |
 | Multi-Agent | DeepAgents subagents；事件可加 `agent_status` |
 | Artifacts | 事件协议可加 `artifact_created/updated` |

@@ -20,16 +20,19 @@ Creo 当前处于 **MVP 阶段**，目标是建立一个**稳定、清晰、可�
 - Light / Dark Theme
 - 基础错误处理 / 日志 / 测试
 - 项目治理文档（CHANGELOG / TECHNICAL-NOTES / PITFALLS / ADR）
+- 知识库 v1（ADR-0004）：PDF 上传/分类、Unstructured 解析、BM25 稀疏 + Dense 混合检索（Milvus/Zilliz）、Agent 检索工具 `search_knowledge_base`
 
 **明确不做（只预留扩展边界，不得提前实现）：**
 
-- RAG / Knowledge Base / Vector Database
+- RAG 深水区（KB v1 只做 PDF + 混合检索，见 ADR-0004；其余不实现）：
+  - Office / HTML / 图片等多格式解析（当前仅 PDF）
+  - Rerank 模型 / GraphRAG / 知识图谱 / 增量同步 / 文档权限过滤
 - MCP
 - Multi-Agent / Agent-to-Agent
 - Workflow Designer
 - Long-term Memory
 - Authentication / RBAC / Billing / Team
-- Web Search / 文件知识库
+- Web Search
 - 复杂 Artifact 系统
 
 ---
@@ -83,16 +86,16 @@ Tool → 直接修改 React 状态                   # ❌ Tool 与 UI 通过 Ev
 | 层 | 路径 | 职责 | 禁止 |
 | --- | --- | --- | --- |
 | API | `backend/app/api/` | 校验、组装、SSE 编码 | import agent 内部（agent.py / model.py）与框架模块 |
-| Service | `backend/app/services/` | 存储边界（接口隔离） | 依赖 agent 层 |
+| Service | `backend/app/services/` | 存储边界（接口隔离）+ 外部集成客户端（Unstructured / Embedding / Milvus） | 依赖 agent 层；`pymilvus` 只允许出现在 `services/kb_vector_store.py` |
 | Agent Runtime | `backend/app/agent/` | 事件转换、图构建 | ——（**唯一**可 import deepagents / langchain / langgraph） |
-| Tools | `backend/app/tools/` | 独立工具实现 | 依赖 UI / API |
+| Tools | `backend/app/tools/` | 独立工具实现（含知识库检索工具工厂 `knowledge_tools.py`） | 依赖 UI / API |
 | 前端 UI | `frontend/src/components/` | 渲染与交互 | 直接 import `@/services` / `@/lib/sse`（必须走 hooks） |
 | 前端 Hooks | `frontend/src/hooks/` | 编排与副作用 | —— |
 | 前端 Service | `frontend/src/services/` | 唯一网络出口 | 依赖具体组件 |
 | Store | `frontend/src/stores/` | 纯状态归约（可单测） | 网络访问、依赖框架对象 |
 | UI 基础件 | `frontend/src/components/ui/` | 通用组件 | 依赖业务模块（只允许 `@/lib/utils`） |
 
-> 以上边界由 `node scripts/check-boundaries.mjs` 自动检查（pre-commit 会执行），新增禁止规则时同步更新该脚本。颜色禁止硬编码十六进制值（DESIGN.md §2），同样由该脚本强制。
+> 以上边界由 `node scripts/check-boundaries.mjs` 自动检查（pre-commit 会执行），新增禁止规则时同步更新该脚本。`pymilvus` 仅限 `services/kb_vector_store.py` 使用，同样由该脚本强制。颜色禁止硬编码十六进制值（DESIGN.md §2），同样由该脚本强制。
 
 ---
 

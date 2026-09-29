@@ -74,6 +74,14 @@ for (const file of walk(join(ROOT, "backend", "app"))) {
       "AGENTS.md §2: services must not depend on the agent layer",
     );
   }
+
+  if (!rel.replaceAll("\\", "/").endsWith("app/services/kb_vector_store.py")) {
+    checkLines(
+      file,
+      /^\s*(?:from|import)\s+pymilvus\b/,
+      "AGENTS.md §2: only services/kb_vector_store.py may import pymilvus (ADR-0004)",
+    );
+  }
 }
 
 // --- AGENTS.md §2: frontend layering -----------------------------------------
