@@ -10,6 +10,7 @@
 
 ### Changed
 
+- README 重构为英文主文档（新增知识库完整启动/配置说明与配置项参考），并新增对应的中文版 `README_zh.md`，两版顶部互相链接。
 - **LLM 配置全面开放自定义**：新增 `CREO_MODEL_PROVIDER` / `CREO_MODEL_NAME` / `CREO_MODEL_BASE_URL` / `CREO_MODEL_API_KEY` 四个配置项，支持任意 init_chat_model 提供方；OpenAI 兼容端点（DeepSeek、Qwen、Moonshot、Ollama、vLLM…）改 BASE_URL 即可接入。健康检查的 `model` 字段显示当前配置。
 - 前端包管理器从 npm 切换为 **pnpm**：`package.json` 以 `packageManager` 锁定 pnpm@12.4.1，lockfile 由 package-lock.json 换为 pnpm-lock.yaml，新增 pnpm-workspace.yaml（构建脚本放行与供应链策略配置），Dockerfile 与 pre-commit 脚本同步更新。
 
