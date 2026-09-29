@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     # --- Knowledge base (ADR-0004; disabled unless enabled AND fully
     #     configured — the lifespan skips the stack when endpoints are empty) ---
     kb_enabled: bool = False
+    # All on-disk state (sessions, checkpoints, KB registry, uploads, caches)
+    data_dir: Path = BACKEND_ROOT / "data"
     kb_data_dir: Path = BACKEND_ROOT / "data" / "kb"
     milvus_uri: str = ""  # Zilliz Cloud endpoint or http://host:19530
     milvus_token: str = ""  # Zilliz Cloud API key (empty for unauthenticated self-hosting)

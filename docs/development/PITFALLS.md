@@ -4,6 +4,30 @@
 
 ---
 
+## [2026-09-30] 重启后"KB 消失"：两个叠加根因 + 测试数据泄漏进真实 SQLite
+
+### Problem
+
+用户上传 PDF 后重启后端，页面上 KB/文档列表全空、上传按钮禁用。另外引入会话持久化后，test_api 一跑发现真实 `data/sessions.sqlite` 里冒出 5 条测试会话。
+
+### Cause
+
+三个问题叠加：① 前端 `currentKbId` 挂载时不自动选中，KB 列表在但页面处于"未选择"状态（上传按钮 `!currentKb` 禁用）；② 后端把登记服务与远端可用性耦合，MilvusClient 构造即拨号，启动时 Zilliz 不可达会禁用整个 KB 栈（登记接口 503）；③ hermetic 测试 fixture 只覆盖了环境变量与 KB 开关，没重定向 `data_dir`——持久化一落地测试就写进了真实数据库。
+
+### Solution
+
+① 挂载加载后自动选中第一个 KB 并拉取文档；② Milvus 连接改为懒式（构造零网络，失败只作用于当次操作），登记服务无条件创建；③ conftest 把 `data_dir`/`kb_data_dir` 重定向到 per-test tmp 目录；测试泄漏的真实库数据已清理。
+
+### Lesson
+
+"数据在不在"和"用户看不看得见"是两回事——持久化 bug 的第一动作是直接查落盘文件而不是改代码。测试密闭性必须随持久化面扩大而同步扩大：凡新增落盘点，conftest 就要覆盖。
+
+### Related
+
+backend/app/main.py · backend/app/services/kb_vector_store.py · backend/app/services/session_service.py · backend/tests/conftest.py · frontend/src/hooks/useKnowledgeBase.ts
+
+---
+
 ## [2026-09-29] Transform SDK 的 server_url 不能带 /api/v2 路径
 
 ### Problem

@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-09-30
+
+### 持久化全量化（重启不丢任何数据）+ KB 栈与远端服务解耦
+
+用户反馈"重启后上传的 PDF 都没了"。诊断：**数据其实都在**（kb.sqlite、原件、追踪、缓存全部落盘），真因是两个——① 前端 `currentKbId` 初始为 null 且不自动选中，重启后列表加载了但上传按钮被 `!currentKb` 禁用、文档网格不渲染，观感即"全没了"；② KB 栈存活与 Zilliz 启动时是否连得上耦合（MilvusClient 构造即拨号，连不上→整个栈禁用→登记接口 503）。修复：
+
+- **前端**：挂载加载 KB 列表后自动选中第一个并拉取其文档（仅挂载时执行，不覆盖用户后续操作）。
+- **Milvus 懒连接**：`MilvusVectorStore.client` property 首次使用才连（双检锁），构造零网络；连接失败只让当次操作抛 `MilvusException`（实测类型），下次调用重试，登记/文件/追踪永远在线。构造函数支持注入 client 供测试。
+- **登记与远端解耦**：`_build_knowledge_stack` 先建 SqliteKnowledgeService + 启动恢复，缺远端配置只禁用"入库/检索工具"，登记接口照常。
+- **会话持久化**：`SqliteSessionService`（stdlib sqlite3，`data/sessions.sqlite`）替换内存实现，接口不变。
+- **对话记忆持久化**：`langgraph-checkpoint-sqlite` 的 `AsyncSqliteSaver`（`data/checkpoints.sqlite`）替换 MemorySaver，全局聊天与所有 doc-chat scope 共享一个 saver（线程按 session_id 隔离，`docchat-{docId}` 前缀天然不冲突）。lifespan 用 `async with open_checkpointer(...)` 管理 lifecycle；langgraph 导入留在 agent 层（`app/agent/checkpointer.py`）以通过边界脚本。
+- **启动恢复**：`fail_interrupted_ingestions()` 把重启时卡在 processing 的文档标记为 failed（提示可重试，已完成阶段走缓存），前端不再无限轮询。
+- **测试密闭升级**：conftest 的 hermetic fixture 现在同时重定向 `data_dir`/`kb_data_dir` 到 per-test tmp——曾抓到 test_api 把测试会话写进真实 sessions.sqlite（已清理）。持久化相关测试见 `tests/test_persistence.py`。
+
+依赖新增：`langgraph-checkpoint-sqlite`、`aiosqlite`。
+
+---
+
 ## 2026-09-29（晚）
 
 ### 解析后端切换：自托管 Partition Endpoint → Unstructured Transform API（SDK 0.18.21 实测）

@@ -117,6 +117,7 @@ class KnowledgeService(Protocol):
         duration_ms: int | None = None,
     ) -> PipelineEvent: ...
     def list_pipeline_events(self, doc_id: str) -> list[PipelineEvent]: ...
+    def fail_interrupted_ingestions(self) -> int: ...
 
 
 _SCHEMA = """
@@ -394,6 +395,26 @@ class SqliteKnowledgeService:
             )
             for row in rows
         ]
+
+    def fail_interrupted_ingestions(self) -> int:
+        """Startup recovery: documents stuck in `processing` from a restart can
+        never resume (the background task died with the process) — mark them
+        failed so the UI offers reingest instead of polling forever."""
+        with self._lock, self._conn:
+            rows = self._conn.execute(
+                "SELECT id FROM document WHERE status = 'processing'"
+            ).fetchall()
+            if rows:
+                self._conn.execute(
+                    "UPDATE document SET status = 'failed', error = ?, updated_at = ?"
+                    " WHERE status = 'processing'",
+                    (
+                        "backend restarted mid-ingestion — click re-ingest to retry "
+                        "(completed stages are cached)",
+                        _utcnow().isoformat(),
+                    ),
+                )
+        return len(rows)
 
     def close(self) -> None:
         self._conn.close()

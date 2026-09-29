@@ -5,9 +5,14 @@ One collection per knowledge base. The sparse channel is computed SERVER-SIDE
 by a BM25 function over the `text` field: rows are inserted without the sparse
 field, and sparse queries pass raw query text. API shapes verified against
 pymilvus 3.0.2 (TECHNICAL-NOTES).
+
+The Milvus connection is established lazily on first use: startup never dials
+the network, so a slow/unreachable cluster cannot take the KB registry down
+(it only fails the operations that actually need vectors).
 """
 
 import json
+import threading
 from typing import Any
 
 from pymilvus import (
@@ -84,32 +89,42 @@ class MilvusVectorStore:
         dim: int = 1024,
         analyzer: str = "chinese",
         timeout: float = 60.0,
+        client: MilvusClient | None = None,
     ) -> None:
         self._dim = dim
         self._uri = uri
+        self._token = token
         self._timeout = timeout
         self._analyzer_params = analyzer_params(analyzer)
-        # Fails fast on unreachable/misconfigured endpoints; the caller (main
-        # lifespan) treats that as "KB disabled" and logs a warning.
-        self._client = MilvusClient(uri=uri, token=token or None)
+        self._client_lock = threading.Lock()
+        self._client = client  # injectable for tests; lazily connected otherwise
+
+    @property
+    def client(self) -> MilvusClient:
+        """Connect on first use — startup must not dial the network."""
+        if self._client is None:
+            with self._client_lock:
+                if self._client is None:
+                    self._client = MilvusClient(uri=self._uri, token=self._token or None)
+        return self._client
 
     def close(self) -> None:
-        self._client.close()
+        self._client = None
 
     @property
     def analyzer_params(self) -> dict[str, Any]:
         return dict(self._analyzer_params)
 
     def list_collections(self) -> list[str]:
-        return list(self._client.list_collections())
+        return list(self.client.list_collections())
 
     def has_collection(self, name: str) -> bool:
-        return bool(self._client.has_collection(name))
+        return bool(self.client.has_collection(name))
 
     def ensure_collection(self, name: str) -> None:
         if self.has_collection(name):
             return
-        schema = self._client.create_schema(auto_id=True, enable_dynamic_field=False)
+        schema = self.client.create_schema(auto_id=True, enable_dynamic_field=False)
         schema.add_field("id", DataType.INT64, is_primary=True)
         schema.add_field(
             "text",
@@ -132,14 +147,14 @@ class MilvusVectorStore:
                 output_field_names=["sparse"],
             )
         )
-        index_params = self._client.prepare_index_params()
+        index_params = self.client.prepare_index_params()
         index_params.add_index(field_name="dense", index_type="AUTOINDEX", metric_type="COSINE")
         index_params.add_index(
             field_name="sparse",
             index_type=sparse_index_type(self._uri),
             metric_type="BM25",
         )
-        self._client.create_collection(
+        self.client.create_collection(
             name, schema=schema, index_params=index_params, timeout=self._timeout
         )
         logger.info(
@@ -151,20 +166,20 @@ class MilvusVectorStore:
 
     def insert_chunks(self, name: str, rows: list[dict[str, Any]]) -> int:
         """Insert chunk rows: text/dense/doc_id/chunk_index/page_number/metadata."""
-        self._client.insert(collection_name=name, data=rows, timeout=self._timeout)
+        self.client.insert(collection_name=name, data=rows, timeout=self._timeout)
         return len(rows)
 
     def delete_doc(self, name: str, doc_id: str) -> None:
         if not self.has_collection(name):
             return
-        self._client.delete(
+        self.client.delete(
             collection_name=name, filter=f'doc_id == "{doc_id}"', timeout=self._timeout
         )
 
     def drop_collection(self, name: str) -> None:
         if not self.has_collection(name):
             return
-        self._client.drop_collection(name, timeout=self._timeout)
+        self.client.drop_collection(name, timeout=self._timeout)
         logger.info("dropped milvus collection %s", name)
 
     def hybrid_search(
@@ -196,7 +211,7 @@ class MilvusVectorStore:
                 expr=filter_expr or None,
             ),
         ]
-        results = self._client.hybrid_search(
+        results = self.client.hybrid_search(
             collection_name=name,
             reqs=requests,
             ranker=RRFRanker(RRF_K),
@@ -210,7 +225,7 @@ class MilvusVectorStore:
         self, name: str, query_vector: list[float], *, top_k: int = 5, filter_expr: str = ""
     ) -> list[dict[str, Any]]:
         """Single-channel dense search (retrieval testing / debugging)."""
-        results = self._client.search(
+        results = self.client.search(
             collection_name=name,
             data=[query_vector],
             anns_field="dense",
@@ -225,7 +240,7 @@ class MilvusVectorStore:
         self, name: str, query_text: str, *, top_k: int = 5, filter_expr: str = ""
     ) -> list[dict[str, Any]]:
         """Single-channel BM25 search over raw query text (retrieval testing)."""
-        results = self._client.search(
+        results = self.client.search(
             collection_name=name,
             data=[query_text],
             anns_field="sparse",

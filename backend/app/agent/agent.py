@@ -46,14 +46,17 @@ def make_agent_builder(
     model_api_key: str = "",
     model_base_url: str = "",
     extra_tools: list | None = None,
+    checkpointer: Any | None = None,
 ) -> Callable[[], Any]:
-    """Return a lazily-invoked agent builder sharing one in-process checkpointer.
+    """Return a lazily-invoked agent builder sharing one checkpointer.
 
     Lazy on purpose: building the model may fail (e.g. missing provider API
     key) and must surface as an Agent `error` event on the first chat request,
-    not as a server startup crash.
+    not as a server startup crash. Pass `checkpointer` to persist conversation
+    memory (main wires the shared AsyncSqliteSaver); None keeps an in-memory
+    MemorySaver (tests).
     """
-    checkpointer = MemorySaver()
+    saver = checkpointer or MemorySaver()
 
     def build() -> Any:
         model = create_model(
@@ -65,7 +68,7 @@ def make_agent_builder(
         return build_agent(
             model=model,
             instructions=instructions,
-            checkpointer=checkpointer,
+            checkpointer=saver,
             tools=extra_tools,
         )
 
@@ -79,17 +82,19 @@ def make_doc_agent_factory(
     model_api_key: str = "",
     model_base_url: str = "",
     doc_tool_factory: Callable[[str, str], list] | None = None,
+    checkpointer: Any | None = None,
 ) -> Callable[[str, str], Callable[[], Any]]:
     """Return a factory (kb_id, doc_id) -> lazy agent builder for doc-chat.
 
-    Each document gets its own graph instance with its own checkpointer and a
-    document-scoped retrieval tool, so answers can only come from that one
-    document (ADR-0004 Update 3). Model construction stays lazy per scope:
-    failures surface as error events on the first message, not at startup.
+    Each document gets its own graph instance (its own system prompt and a
+    document-scoped retrieval tool), so answers can only come from that one
+    document (ADR-0004 Update 3). All scopes share the given checkpointer —
+    threads are isolated by session_id, and memory survives restarts when the
+    SQLite saver is wired in.
     """
 
     def build_for(kb_id: str, doc_id: str) -> Callable[[], Any]:
-        checkpointer = MemorySaver()
+        saver = checkpointer or MemorySaver()
         tools = doc_tool_factory(kb_id, doc_id) if doc_tool_factory else []
         scoped_instructions = (
             instructions
@@ -110,7 +115,7 @@ def make_doc_agent_factory(
             return build_agent(
                 model=model,
                 instructions=scoped_instructions,
-                checkpointer=checkpointer,
+                checkpointer=saver,
                 tools=tools,
             )
 

@@ -42,22 +42,28 @@ export function useKnowledgeBase() {
     }
   }, []);
 
-  // Initial load: setState runs in the fetch callback, not synchronously in
-  // the effect body (react-hooks/set-state-in-effect).
+  // Initial load: fetch KBs and auto-select the first one so the page is
+  // usable right after a restart (state resets, data does not).
   useEffect(() => {
     let cancelled = false;
-    kbApi
-      .listKnowledgeBases()
-      .then((result) => {
-        if (!cancelled) {
-          setKnowledgeBases(result);
+    (async () => {
+      try {
+        const bases = await kbApi.listKnowledgeBases();
+        if (cancelled) {
+          return;
         }
-      })
-      .catch((loadError: unknown) => {
+        setKnowledgeBases(bases);
+        if (bases.length > 0) {
+          const first = bases[0];
+          setCurrentKbId(first.id);
+          setDocuments(await kbApi.listDocuments(first.id));
+        }
+      } catch (loadError) {
         if (!cancelled) {
           setError(errorMessage(loadError));
         }
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
