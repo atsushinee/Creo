@@ -5,14 +5,21 @@ ingestion pipeline on BackgroundTasks — no parsing or vector logic here.
 """
 
 import asyncio
+import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from app.api.deps import get_ingestion_service, get_knowledge_service, get_vector_store_service
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.models.knowledge import KbDocumentOut, KnowledgeBaseCreateRequest, KnowledgeBaseOut
+from app.models.knowledge import (
+    KbDocumentOut,
+    KnowledgeBaseCreateRequest,
+    KnowledgeBaseOut,
+    PipelineEventOut,
+)
 from app.services.ingestion_service import IngestionService
 from app.services.kb_service import DuplicateDocumentError, KnowledgeService, UploadTooLargeError
 
@@ -127,6 +134,16 @@ async def upload_document(
     # Sync callable → BackgroundTasks runs it in the worker threadpool after
     # the response, keeping the event loop free for streaming chats.
     background.add_task(ingestion_service.ingest, doc.id)
+    service.add_pipeline_event(
+        doc.id,
+        kb.id,
+        "upload",
+        "succeeded",
+        detail=json.dumps(
+            {"filename": doc.filename, "size": doc.size, "sha256": doc.sha256[:16]},
+            ensure_ascii=False,
+        ),
+    )
     logger.info("accepted upload kb=%s doc=%s size=%d", kb.id, doc.id, doc.size)
     return _doc_out(doc)
 
@@ -136,6 +153,48 @@ async def list_documents(kb_id: str, kb_service: KbDep) -> list[KbDocumentOut]:
     service = _require(kb_service)
     _require_kb(service, kb_id)
     return [_doc_out(doc) for doc in service.list_documents(kb_id)]
+
+
+@router.get("/kb/{kb_id}/documents/{doc_id}/file")
+async def get_document_file(kb_id: str, doc_id: str, kb_service: KbDep) -> FileResponse:
+    """Serve the stored PDF inline (browser pdf.js preview, ADR-0004)."""
+    service = _require(kb_service)
+    kb = _require_kb(service, kb_id)
+    doc = service.get_document(doc_id)
+    if doc is None or doc.kbId != kb.id:
+        raise HTTPException(status_code=404, detail="document not found")
+    path = service.document_path(doc)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="stored file is missing")
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=doc.filename,
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/kb/{kb_id}/documents/{doc_id}/trace")
+async def get_document_trace(kb_id: str, doc_id: str, kb_service: KbDep) -> list[PipelineEventOut]:
+    """Pipeline trace for one document: upload/parse/chunk/embed/index events."""
+    service = _require(kb_service)
+    kb = _require_kb(service, kb_id)
+    doc = service.get_document(doc_id)
+    if doc is None or doc.kbId != kb.id:
+        raise HTTPException(status_code=404, detail="document not found")
+    return [
+        PipelineEventOut(
+            id=event.id,
+            docId=event.docId,
+            kbId=event.kbId,
+            stage=event.stage,
+            status=event.status,
+            detail=event.detail,
+            durationMs=event.durationMs,
+            createdAt=event.createdAt.isoformat(),
+        )
+        for event in service.list_pipeline_events(doc.id)
+    ]
 
 
 @router.delete("/kb/{kb_id}/documents/{doc_id}", status_code=204)

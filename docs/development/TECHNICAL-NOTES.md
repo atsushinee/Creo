@@ -21,7 +21,9 @@
 
 **Zilliz serverless（us-west-1）实测**：DDL（drop/create_collection）偶发 `DEADLINE_EXCEEDED: The upstream server is timing out`（插入/检索反而稳定）。对策：`MilvusVectorStore` 所有操作显式 `timeout=60s`；冒烟脚本清理 3 次重试 + 启动时自愈清残留 `kb_smoke_*`（serverless 超时后服务端往往已执行，重试时 has_collection 为 False 会自然跳过）。
 
-**冒烟测试脚本**：`backend/scripts/smoke_kb.py`（不属 pytest，手动运行）。解析与 embedding 两段付费调用按内容指纹缓存于 `backend/data/smoke/`（parse/{pdf_sha}-{profile}.json、embed/{texts_sha}-{model}-{dim}.json），中途失败重跑不再重复计费；控制台输出 tee 到 `data/smoke/run.log`。真实链路结论：54 页《公司章程》profile=best 解析 220s / 842 elements → 33 chunks → bge-m3 33×1024 → serverless 写入/检索/删除全部正常，RRF 分数量级符合预期（~1/61）。
+**冒烟测试脚本**：`backend/scripts/smoke_kb.py`（不属 pytest，手动运行）。解析与 embedding 两个付费阶段经 `PipelineCache`（`data/kb/_cache/`，内容寻址）缓存，与应用共享——重跑/失败重试零重复计费；控制台输出 tee 到 `data/smoke/run.log`。真实链路结论：54 页《公司章程》profile=best 解析 220s / 842 elements → 33 chunks → bge-m3 33×1024 → serverless 写入/检索/删除全部正常，RRF 分数量级符合预期（~1/61）；**应用级链路**（真实 IngestionService + trace + KbSearchService）全部缓存命中下 8.0s 完成，查询 embedding 为唯一 API 消耗。
+
+**pdfjs-dist 6.3.289 勘察（前端预览）**：`PDFDocumentProxy.destroy()` 已移除——销毁走 `PDFDocumentLoadingTask.destroy()`（持有 loadingTask 引用清理）；`page.render()` 必须传 `canvas`（`canvasContext` 参数已不再是唯一入口）；worker 经 `pdfjs-dist/build/pdf.worker.min.mjs?url` + `GlobalWorkerOptions.workerSrc`。React 19 的 `react-hooks/set-state-in-effect` 不允许 effect 体内同步 setState——预览组件用 `key={docId}` 重挂载替代状态重置。
 
 **Zilliz 索引自适应**：`sparse_index_type(uri)` —— uri 含 "zilliz"（zillizcloud.com / *.cloud.zilliz.com，dedicated 与 serverless）→ AUTOINDEX；自托管 Milvus → 显式 SPARSE_INVERTED_INDEX（AUTOINDEX 不覆盖 BM25 稀疏字段）。
 

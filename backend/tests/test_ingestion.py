@@ -1,11 +1,13 @@
 """IngestionService orchestration with fake clients (ADR-0004)."""
 
 import io
+import json
 from pathlib import Path
 from typing import Any
 
 from app.services.ingestion_service import IngestionService, pack_elements
 from app.services.kb_service import KbDocument, KnowledgeBase, SqliteKnowledgeService
+from app.services.pipeline_cache import PipelineCache
 
 
 class FakeUnstructured:
@@ -147,6 +149,17 @@ def test_ingest_happy_path(tmp_path: Path) -> None:
     assert vector_store.deleted == [(kb.collectionName, doc.id)]  # idempotency pre-clean
     assert vector_store.collections == [kb.collectionName]
 
+    events = kb_service.list_pipeline_events(doc.id)
+    assert [(e.stage, e.status) for e in events] == [
+        ("parse", "succeeded"),
+        ("chunk", "succeeded"),
+        ("embed", "succeeded"),
+        ("index", "succeeded"),
+    ]
+    parse_detail = json.loads(events[0].detail or "{}")
+    assert parse_detail == {"elements": 1, "source": "api", "profile": "best"}
+    assert events[0].durationMs is not None
+
 
 def test_ingest_marks_failed_when_no_text_extracted(tmp_path: Path) -> None:
     kb_service, _, doc, pipeline, vector_store = make_pipeline(
@@ -159,6 +172,10 @@ def test_ingest_marks_failed_when_no_text_extracted(tmp_path: Path) -> None:
     assert final.status == "failed"
     assert final.error is not None and "no extractable text" in final.error
     assert vector_store.rows == []
+
+    events = kb_service.list_pipeline_events(doc.id)
+    assert ("parse", "succeeded") in [(e.stage, e.status) for e in events]
+    assert ("chunk", "failed") in [(e.stage, e.status) for e in events]
 
 
 def test_ingest_marks_failed_on_unstructured_error(tmp_path: Path) -> None:
@@ -182,3 +199,43 @@ def test_ingest_skips_when_already_processing(tmp_path: Path) -> None:
     assert final is not None
     assert final.status == "processing"
     assert vector_store.rows == []
+
+
+def test_ingest_reuses_parse_and_embed_cache(tmp_path: Path) -> None:
+    kb_service = SqliteKnowledgeService(tmp_path / "kb")
+    kb = kb_service.create_kb("docs")
+    doc = kb_service.save_upload(kb.id, "manual.pdf", io.BytesIO(b"%PDF-1.4"), max_bytes=10_000)
+    fake_unstructured = FakeUnstructured(
+        [
+            {
+                "type": "NarrativeText",
+                "text": "这是一段足够长的中文文本内容，用于入库链路测试。",
+                "metadata": {"page_number": 1},
+            }
+        ]
+    )
+    fake_embeddings = FakeEmbeddings()
+    vector_store = FakeVectorStore()
+    pipeline = IngestionService(
+        kb_service,
+        fake_unstructured,
+        fake_embeddings,
+        vector_store,
+        cache=PipelineCache(tmp_path / "cache"),
+        parse_profile="best",
+        embedding_model="BAAI/bge-m3",
+        embedding_dim=1024,
+    )
+
+    pipeline.ingest(doc.id)
+    kb_service.update_document_status(doc.id, "pending", error=None)
+    pipeline.ingest(doc.id)  # re-ingest: both paid stages must hit the cache
+
+    assert len(fake_unstructured.calls) == 1
+    assert len(fake_embeddings.batches) == 1
+    sources = [
+        json.loads(e.detail or "{}").get("source")
+        for e in kb_service.list_pipeline_events(doc.id)
+        if e.stage == "parse"
+    ]
+    assert sources == ["api", "cache"]

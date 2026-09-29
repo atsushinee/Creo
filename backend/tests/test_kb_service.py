@@ -65,6 +65,41 @@ def test_save_upload_requires_existing_kb(tmp_path) -> None:
         service.save_upload("missing", "a.pdf", io.BytesIO(b"%PDF"), max_bytes=1024)
 
 
+def test_delete_kb_purges_documents_and_events(tmp_path) -> None:
+    service = make_service(tmp_path)
+    kb = service.create_kb("docs")
+    doc = service.save_upload(kb.id, "a.pdf", io.BytesIO(b"%PDF"), max_bytes=1024)
+    service.add_pipeline_event(doc.id, kb.id, "upload", "succeeded")
+
+    assert service.delete_kb(kb.id) is True
+
+    assert service.count_documents(kb.id) == 0
+    assert service.get_document(doc.id) is None
+    assert service.list_pipeline_events(doc.id) == []
+    assert not (tmp_path / "kb-root" / kb.id).exists()
+
+
+def test_pipeline_events_roundtrip(tmp_path) -> None:
+    service = make_service(tmp_path)
+    kb = service.create_kb("docs")
+    doc = service.save_upload(kb.id, "a.pdf", io.BytesIO(b"%PDF"), max_bytes=1024)
+
+    event = service.add_pipeline_event(
+        doc.id, kb.id, "parse", "succeeded", detail='{"elements": 3}', duration_ms=120
+    )
+    service.add_pipeline_event(doc.id, kb.id, "embed", "failed", detail='{"error": "boom"}')
+
+    events = service.list_pipeline_events(doc.id)
+    assert [e.stage for e in events] == ["parse", "embed"]
+    assert events[0].id == event.id
+    assert events[0].durationMs == 120
+    assert events[0].detail == '{"elements": 3}'
+    assert events[1].status == "failed"
+
+    assert service.delete_document(doc.id) is True
+    assert service.list_pipeline_events(doc.id) == []
+
+
 def test_status_transitions_and_delete(tmp_path) -> None:
     service = make_service(tmp_path)
     kb = service.create_kb("docs")

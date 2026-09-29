@@ -124,6 +124,30 @@ def test_delete_document_and_kb(tmp_path) -> None:
         assert client.delete(f"/api/kb/{kb['id']}").status_code == 404
 
 
+def test_document_trace_and_file_endpoints(tmp_path) -> None:
+    with TestClient(create_app()) as client:
+        wire_knowledge_stack(client, tmp_path)
+        kb = client.post("/api/kb", json={"name": "docs"}).json()
+        doc = client.post(
+            f"/api/kb/{kb['id']}/documents",
+            files={"file": ("a.pdf", b"%PDF-1.4 test", "application/pdf")},
+        ).json()
+
+        trace = client.get(f"/api/kb/{kb['id']}/documents/{doc['id']}/trace")
+        assert trace.status_code == 200
+        events = trace.json()
+        assert [(e["stage"], e["status"]) for e in events] == [("upload", "succeeded")]
+        assert events[0]["docId"] == doc["id"]
+
+        stored = client.get(f"/api/kb/{kb['id']}/documents/{doc['id']}/file")
+        assert stored.status_code == 200
+        assert stored.headers["content-type"] == "application/pdf"
+        assert b"%PDF-1.4 test" in stored.content
+
+        assert client.get(f"/api/kb/{kb['id']}/documents/none/trace").status_code == 404
+        assert client.get(f"/api/kb/{kb['id']}/documents/none/file").status_code == 404
+
+
 def test_reingest_and_processing_guards(tmp_path) -> None:
     with TestClient(create_app()) as client:
         wire_knowledge_stack(client, tmp_path)

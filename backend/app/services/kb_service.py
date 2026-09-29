@@ -70,6 +70,19 @@ class KbDocument(BaseModel):
     updatedAt: datetime = Field(default_factory=_utcnow)
 
 
+class PipelineEvent(BaseModel):
+    """One recorded pipeline stage for a document (trace/audit, ADR-0004)."""
+
+    id: int
+    docId: str
+    kbId: str
+    stage: str  # upload | parse | chunk | embed | index
+    status: str  # started | succeeded | failed
+    detail: str | None = None  # JSON payload (counts, durations, errors)
+    durationMs: int | None = None
+    createdAt: datetime = Field(default_factory=_utcnow)
+
+
 class KnowledgeService(Protocol):
     """Storage-agnostic knowledge base + document registry."""
 
@@ -93,6 +106,17 @@ class KnowledgeService(Protocol):
     def delete_document(self, doc_id: str) -> bool: ...
     def document_path(self, doc: KbDocument) -> Path: ...
     def count_documents(self, kb_id: str) -> int: ...
+    def add_pipeline_event(
+        self,
+        doc_id: str,
+        kb_id: str,
+        stage: str,
+        status: str,
+        *,
+        detail: str | None = None,
+        duration_ms: int | None = None,
+    ) -> PipelineEvent: ...
+    def list_pipeline_events(self, doc_id: str) -> list[PipelineEvent]: ...
 
 
 _SCHEMA = """
@@ -117,6 +141,17 @@ CREATE TABLE IF NOT EXISTS document (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_document_kb ON document(kb_id);
+CREATE TABLE IF NOT EXISTS pipeline_event (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id TEXT NOT NULL,
+    kb_id TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    status TEXT NOT NULL,
+    detail TEXT,
+    duration_ms INTEGER,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pipeline_event_doc ON pipeline_event(doc_id);
 """
 
 
@@ -204,6 +239,8 @@ class SqliteKnowledgeService:
     def delete_kb(self, kb_id: str) -> bool:
         with self._lock, self._conn:
             cursor = self._conn.execute("DELETE FROM kb WHERE id = ?", (kb_id,))
+            self._conn.execute("DELETE FROM document WHERE kb_id = ?", (kb_id,))
+            self._conn.execute("DELETE FROM pipeline_event WHERE kb_id = ?", (kb_id,))
         shutil.rmtree(self._data_dir / kb_id, ignore_errors=True)
         return cursor.rowcount > 0
 
@@ -295,6 +332,7 @@ class SqliteKnowledgeService:
             return False
         with self._lock, self._conn:
             self._conn.execute("DELETE FROM document WHERE id = ?", (doc_id,))
+            self._conn.execute("DELETE FROM pipeline_event WHERE doc_id = ?", (doc_id,))
         (self._data_dir / document.path).unlink(missing_ok=True)
         return True
 
@@ -307,6 +345,55 @@ class SqliteKnowledgeService:
                 "SELECT COUNT(*) AS n FROM document WHERE kb_id = ?", (kb_id,)
             ).fetchone()
         return int(row["n"]) if row is not None else 0
+
+    # --- pipeline trace -------------------------------------------------------
+
+    def add_pipeline_event(
+        self,
+        doc_id: str,
+        kb_id: str,
+        stage: str,
+        status: str,
+        *,
+        detail: str | None = None,
+        duration_ms: int | None = None,
+    ) -> PipelineEvent:
+        created = _utcnow().isoformat()
+        with self._lock, self._conn:
+            cursor = self._conn.execute(
+                "INSERT INTO pipeline_event (doc_id, kb_id, stage, status, detail,"
+                " duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (doc_id, kb_id, stage, status, detail, duration_ms, created),
+            )
+        return PipelineEvent(
+            id=int(cursor.lastrowid or 0),
+            docId=doc_id,
+            kbId=kb_id,
+            stage=stage,
+            status=status,
+            detail=detail,
+            durationMs=duration_ms,
+            createdAt=datetime.fromisoformat(created),
+        )
+
+    def list_pipeline_events(self, doc_id: str) -> list[PipelineEvent]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM pipeline_event WHERE doc_id = ? ORDER BY id ASC", (doc_id,)
+            ).fetchall()
+        return [
+            PipelineEvent(
+                id=row["id"],
+                docId=row["doc_id"],
+                kbId=row["kb_id"],
+                stage=row["stage"],
+                status=row["status"],
+                detail=row["detail"],
+                durationMs=row["duration_ms"],
+                createdAt=datetime.fromisoformat(row["created_at"]),
+            )
+            for row in rows
+        ]
 
     def close(self) -> None:
         self._conn.close()

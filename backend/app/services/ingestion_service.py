@@ -4,14 +4,19 @@ element packing (client-side chunking) → dense embeddings → Milvus insert
 
 Runs synchronously on a worker thread — FastAPI BackgroundTasks executes sync
 callables via its threadpool. Document status lives in the KnowledgeService so
-the frontend can poll it.
+the frontend can poll it. Every stage writes a pipeline_event (trace) and the
+paid stages (parse, embed) consult the content-addressed PipelineCache, so a
+failed re-run never re-spends API quota for completed stages.
 """
 
+import json
+import time
 from pathlib import Path
 from typing import Any, Protocol
 
 from app.core.logging import get_logger
 from app.services.kb_service import KnowledgeService
+from app.services.pipeline_cache import PipelineCache
 
 logger = get_logger("services.ingestion")
 
@@ -145,12 +150,44 @@ class IngestionService:
         vector_store: VectorStoreLike,
         *,
         max_chars: int = 1500,
+        cache: PipelineCache | None = None,
+        parse_profile: str = "best",
+        embedding_model: str = "",
+        embedding_dim: int = 0,
     ) -> None:
         self._knowledge = knowledge_service
         self._unstructured = unstructured
         self._embeddings = embeddings
         self._vector = vector_store
         self._max_chars = max_chars
+        self._cache = cache
+        self._parse_profile = parse_profile
+        self._embedding_model = embedding_model
+        self._embedding_dim = embedding_dim
+
+    # --- trace ---------------------------------------------------------------
+
+    def _event(
+        self,
+        doc: Any,
+        stage: str,
+        status: str,
+        detail: dict[str, Any] | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        try:
+            self._knowledge.add_pipeline_event(
+                doc.id,
+                doc.kbId,
+                stage,
+                status,
+                detail=json.dumps(detail, ensure_ascii=False) if detail is not None else None,
+                duration_ms=duration_ms,
+            )
+        except Exception:  # tracing must never break ingestion
+            logger.exception("failed to record pipeline event (%s/%s)", doc.id, stage)
+
+    # --- pipeline --------------------------------------------------------------
 
     def ingest(self, doc_id: str) -> None:
         """Process one document; never raises — failures land on the doc row."""
@@ -167,14 +204,65 @@ class IngestionService:
             return
 
         self._knowledge.update_document_status(doc_id, "processing")
+        stage = "parse"
         try:
-            elements = self._unstructured.parse_pdf(
-                self._knowledge.document_path(doc), doc.filename
+            started = time.perf_counter()
+            elements: list[dict] | None = None
+            parse_source = "api"
+            if self._cache is not None:
+                elements = self._cache.load_parse(doc.sha256, self._parse_profile)
+                if elements is not None:
+                    parse_source = "cache"
+            if elements is None:
+                elements = self._unstructured.parse_pdf(
+                    self._knowledge.document_path(doc), doc.filename
+                )
+                if self._cache is not None:
+                    self._cache.save_parse(doc.sha256, self._parse_profile, elements, "api")
+            self._event(
+                doc,
+                "parse",
+                "succeeded",
+                {"elements": len(elements), "source": parse_source,
+                 "profile": self._parse_profile},
+                _elapsed(started),
             )
+
+            stage = "chunk"
+            started = time.perf_counter()
             chunks = pack_elements(elements, doc.filename, max_chars=self._max_chars)
+            self._event(doc, "chunk", "succeeded", {"chunks": len(chunks)}, _elapsed(started))
             if not chunks:
                 raise IngestionError("no extractable text (scanned PDF? try profile=best)")
-            vectors = self._embeddings.embed_texts([chunk["text"] for chunk in chunks])
+
+            stage = "embed"
+            started = time.perf_counter()
+            texts = [chunk["text"] for chunk in chunks]
+            vectors: list[list[float]] | None = None
+            embed_source = "api"
+            if self._cache is not None:
+                vectors = self._cache.load_embeddings(
+                    texts, model=self._embedding_model, dim=self._embedding_dim
+                )
+                if vectors is not None:
+                    embed_source = "cache"
+            if vectors is None:
+                vectors = self._embeddings.embed_texts(texts)
+                if self._cache is not None:
+                    self._cache.save_embeddings(
+                        texts, vectors,
+                        model=self._embedding_model, dim=self._embedding_dim,
+                    )
+            self._event(
+                doc,
+                "embed",
+                "succeeded",
+                {"vectors": len(vectors), "dim": len(vectors[0]), "source": embed_source},
+                _elapsed(started),
+            )
+
+            stage = "index"
+            started = time.perf_counter()
             rows = [
                 {
                     "text": chunk["text"],
@@ -189,12 +277,19 @@ class IngestionService:
             self._vector.ensure_collection(kb.collectionName)
             self._vector.delete_doc(kb.collectionName, doc.id)  # idempotent re-ingest
             self._vector.insert_chunks(kb.collectionName, rows)
+            self._event(doc, "index", "succeeded", {"rows": len(rows)}, _elapsed(started))
+
             self._knowledge.update_document_status(doc_id, "ready", chunk_count=len(rows))
             logger.info(
                 "ingested document=%s chunks=%d collection=%s", doc.id, len(rows), kb.collectionName
             )
         except Exception as exc:
             logger.exception("ingestion failed for document=%s", doc_id)
+            self._event(doc, stage, "failed", {"error": f"{type(exc).__name__}: {exc}"})
             self._knowledge.update_document_status(
                 doc_id, "failed", error=f"{type(exc).__name__}: {exc}"
             )
+
+
+def _elapsed(started: float) -> int:
+    return int((time.perf_counter() - started) * 1000)

@@ -31,3 +31,14 @@ class KbDocumentOut(BaseModel):
     chunkCount: int = 0
     createdAt: str
     updatedAt: str
+
+
+class PipelineEventOut(BaseModel):
+    id: int
+    docId: str
+    kbId: str
+    stage: str
+    status: str
+    detail: str | None = None
+    durationMs: int | None = None
+    createdAt: str

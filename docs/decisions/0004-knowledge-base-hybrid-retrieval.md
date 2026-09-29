@@ -33,6 +33,13 @@ MVP（Agent 基础链路）稳定后，需要把本地 PDF 沉淀为可检索的
 
 其余决策（每 KB 一 collection、服务端 BM25 Function、RRF 混合检索、BackgroundTasks、事件协议零变更、优雅降级）不变。
 
+## Update 2（2026-09-29 深夜）：链路追踪 + 阶段缓存 + PDF 预览
+
+1. **链路追踪**：新增 `pipeline_event` 表（upload/parse/chunk/embed/index 五阶段 × started/succeeded/failed，含 detail JSON 与 duration_ms），入库管线每个阶段落事件；`GET /api/kb/{id}/documents/{doc_id}/trace` 查询，前端文档行内展开时间线。追踪失败绝不影响主流程。
+2. **阶段缓存下沉生产管线**：`PipelineCache`（内容寻址，`{kb_data_dir}/_cache`）缓存 parse（pdf_sha+profile）与 embed（分块文本哈希+model+dim）两个付费阶段——失败重跑、同文件重复上传、跨 KB 同内容全部零重复计费；冒烟脚本与应用共享同一份缓存。
+3. **删除语义修正**：`delete_kb` 级联清理 document 与 pipeline_event 行（修复孤儿行）；前端 KB/文档删除均需确认。
+4. **PDF 预览**：`GET .../documents/{doc_id}/file` 内联返回原件，前端 pdf.js（pdfjs-dist 6）canvas 渲染 + 翻页。
+
 ## Alternatives
 
 | 方案 | 不选原因 |

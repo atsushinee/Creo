@@ -2,21 +2,24 @@
 
 Usage (from backend/):  uv run python scripts/smoke_kb.py [path/to/file.pdf]
 
-Stages: Unstructured parse → client-side chunking → embeddings → Zilliz insert
-+ hybrid search + delete → collection cleanup (temporary kb_smoke_* collection,
-dropped even on failure; not part of pytest).
+Stages:
+  1. Unstructured Transform API parse      (paid — cached)
+  2. client-side chunking                  (pure)
+  3. embeddings                            (paid — cached)
+  4. raw Milvus insert + hybrid search + delete + cleanup
+  5. app-level chain: real IngestionService (trace events) + KbSearchService
 
-Paid stages are cached on disk under data/smoke/ so a late-stage failure never
-re-spends API quota on a rerun:
-  - parse:      data/smoke/parse/{pdf_sha}-{profile}.json      (element dicts)
-  - embeddings: data/smoke/embed/{texts_sha}-{model}-{dim}.json (vectors)
-Cache keys embed the PDF hash, profile, chunk-texts hash, model and dim, so
-changing any input invalidates the stale cache automatically. Console output
-is tee'd to data/smoke/run.log for post-mortems.
+Paid stages are cached so late failures never re-spend API quota:
+  - production pipeline cache:  data/kb/_cache/{parse,embed}/...  (stage 5,
+    shared with the real backend — content-addressed by PipelineCache)
+  - smoke-only mirrors are NOT used; stages 1/3 read through PipelineCache
+    directly, so a smoke run warms the same cache the app uses.
+Console output is tee'd to data/smoke/run.log. Temporary kb_smoke_* /
+app-smoke collections are dropped even on failure. Not part of pytest.
 """
 
 import hashlib
-import json
+import shutil
 import sys
 import time
 from collections import Counter
@@ -29,8 +32,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ root
 from app.core.config import get_settings  # noqa: E402
 from app.core.logging import setup_logging  # noqa: E402
 from app.services.embedding_client import OpenAIEmbeddingClient  # noqa: E402
-from app.services.ingestion_service import pack_elements  # noqa: E402
+from app.services.ingestion_service import IngestionService, pack_elements  # noqa: E402
+from app.services.kb_search import KbSearchService  # noqa: E402
+from app.services.kb_service import SqliteKnowledgeService  # noqa: E402
 from app.services.kb_vector_store import MilvusVectorStore  # noqa: E402
+from app.services.pipeline_cache import PipelineCache  # noqa: E402
 from app.services.unstructured_client import UnstructuredClient  # noqa: E402
 
 DEFAULT_PDF = Path(r"C:\Users\freedom\Desktop\yushu.pdf")
@@ -38,36 +44,6 @@ DEFAULT_PDF = Path(r"C:\Users\freedom\Desktop\yushu.pdf")
 
 def preview(text: str, limit: int = 90) -> str:
     return " ".join(text.split())[:limit]
-
-
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
-
-
-class Cache:
-    """JSON artifacts under data/smoke/, keyed by content fingerprints."""
-
-    def __init__(self, root: Path, log_path: Path) -> None:
-        self.parse_dir = root / "parse"
-        self.embed_dir = root / "embed"
-        self.log_path = log_path
-        self.parse_dir.mkdir(parents=True, exist_ok=True)
-        self.embed_dir.mkdir(parents=True, exist_ok=True)
-
-    def load(self, path: Path) -> object | None:
-        if path.is_file():
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                return None
-        return None
-
-    def save(self, path: Path, payload: object) -> None:
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 def main() -> int:
@@ -82,7 +58,9 @@ def main() -> int:
     cache_root = settings.kb_data_dir.parent / "smoke"
     log_path = cache_root / "run.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    cache = Cache(cache_root, log_path)
+    (settings.kb_data_dir / "_cache").mkdir(parents=True, exist_ok=True)
+    log_file = log_path.open("a", encoding="utf-8")
+    log_file.write(f"\n===== run {datetime.now(UTC).isoformat()} =====\n")
 
     class Tee:
         def __init__(self, *streams: object) -> None:
@@ -97,8 +75,6 @@ def main() -> int:
             for stream in self._streams:
                 stream.flush()
 
-    log_file = log_path.open("a", encoding="utf-8")
-    log_file.write(f"\n===== run {datetime.now(UTC).isoformat()} =====\n")
     sys.stdout = Tee(sys.__stdout__, log_file)  # type: ignore[assignment]
 
     print(f"PDF: {pdf} ({pdf.stat().st_size // 1024} KB)")
@@ -111,39 +87,38 @@ def main() -> int:
         f"config: {configured}  profile={settings.unstructured_profile}  "
         f"dim={settings.kb_embedding_dim}  analyzer={settings.kb_analyzer}"
     )
-    print(f"cache: {cache_root}")
+    print(f"cache: {settings.kb_data_dir / '_cache'}")
     if not all(configured.values()):
         print("✗ incomplete KB config (see above)")
         return 1
 
-    pdf_sha = sha256_bytes(pdf.read_bytes())
+    pdf_sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    pipeline_cache = PipelineCache(settings.kb_data_dir / "_cache")
+    parser = UnstructuredClient(
+        settings.unstructured_api_key,
+        server_url=settings.unstructured_server_url,
+        profile=settings.unstructured_profile,
+        timeout_seconds=settings.unstructured_timeout_seconds,
+    )
+    embedder = OpenAIEmbeddingClient(
+        settings.kb_embedding_base_url,
+        api_key=settings.kb_embedding_api_key,
+        model=settings.kb_embedding_model,
+    )
 
-    # --- 1. Unstructured Transform API (cached) ------------------------------
-    parse_cache = cache.parse_dir / f"{pdf_sha[:16]}-{settings.unstructured_profile}.json"
-    cached = cache.load(parse_cache)
-    if isinstance(cached, dict) and isinstance(cached.get("elements"), list):
-        elements = cached["elements"]
-        print(f"\n[1] parse: CACHE HIT ({parse_cache.name}) → {len(elements)} elements")
+    # --- 1. Unstructured Transform API (cached) -------------------------------
+    started = time.perf_counter()
+    elements = pipeline_cache.load_parse(pdf_sha, settings.unstructured_profile)
+    if elements is not None:
+        print(f"\n[1] parse: CACHE HIT → {len(elements)} elements")
     else:
         print("\n[1] parsing via Unstructured Transform API (no cache) ...")
-        parser = UnstructuredClient(
-            settings.unstructured_api_key,
-            server_url=settings.unstructured_server_url,
-            profile=settings.unstructured_profile,
-            timeout_seconds=settings.unstructured_timeout_seconds,
-        )
-        started = time.perf_counter()
         try:
             elements = parser.parse_pdf(pdf, pdf.name)
         except Exception as exc:
             print(f"✗ parse failed after {time.perf_counter() - started:.1f}s: {exc}")
             return 1
-        cache.save(parse_cache, {
-            "pdf": str(pdf),
-            "pdf_sha256": pdf_sha,
-            "profile": settings.unstructured_profile,
-            "elements": elements,
-        })
+        pipeline_cache.save_parse(pdf_sha, settings.unstructured_profile, elements, "api")
         print(f"    OK: {len(elements)} elements in {time.perf_counter() - started:.1f}s (cached)")
     print(f"    types: {dict(Counter(e['type'] for e in elements))}")
     pages = sorted({e["metadata"]["page_number"] for e in elements if e["metadata"]["page_number"]})
@@ -161,38 +136,23 @@ def main() -> int:
     print(f"    len min/avg/max: {min(lengths)}/{sum(lengths) // len(lengths)}/{max(lengths)}")
     print(f"    chunk[0] p.{chunks[0]['page_number']}: {preview(chunks[0]['text'])!r}")
 
-    # --- 3. embeddings (cached by chunk texts + model + dim) ------------------
-    texts_sig = sha256_text("\n<chunk>\n".join(c["text"] for c in chunks))
-    model_tag = settings.kb_embedding_model.replace("/", "_")
-    embed_cache = cache.embed_dir / f"{texts_sig}-{model_tag}-{settings.kb_embedding_dim}.json"
-    cached = cache.load(embed_cache)
-    vectors = None
-    if isinstance(cached, dict) and isinstance(cached.get("vectors"), list):
-        candidates = cached["vectors"]
-        if len(candidates) == len(chunks):
-            vectors = candidates
-            print(f"\n[3] embeddings: CACHE HIT ({embed_cache.name}) → {len(vectors)} vectors")
-    if vectors is None:
+    # --- 3. embeddings (cached) ------------------------------------------------
+    started = time.perf_counter()
+    texts = [chunk["text"] for chunk in chunks]
+    vectors = pipeline_cache.load_embeddings(
+        texts, model=settings.kb_embedding_model, dim=settings.kb_embedding_dim
+    )
+    if vectors is not None:
+        print(f"\n[3] embeddings: CACHE HIT → {len(vectors)} vectors")
+    else:
         print("\n[3] embedding via OpenAI-compatible endpoint (no cache) ...")
-        embedder = OpenAIEmbeddingClient(
-            settings.kb_embedding_base_url,
-            api_key=settings.kb_embedding_api_key,
-            model=settings.kb_embedding_model,
-        )
-        started = time.perf_counter()
         try:
-            vectors = embedder.embed_texts([c["text"] for c in chunks])
+            vectors = embedder.embed_texts(texts)
         except Exception as exc:
             print(f"✗ embedding failed after {time.perf_counter() - started:.1f}s: {exc}")
             return 1
-        cache.save(
-            embed_cache,
-            {
-                "model": settings.kb_embedding_model,
-                "dim": settings.kb_embedding_dim,
-                "texts_sha": texts_sig,
-                "vectors": vectors,
-            },
+        pipeline_cache.save_embeddings(
+            texts, vectors, model=settings.kb_embedding_model, dim=settings.kb_embedding_dim
         )
         print(f"    OK: {len(vectors)} vectors in {time.perf_counter() - started:.1f}s (cached)")
     print(f"    dim={len(vectors[0])} (expected {settings.kb_embedding_dim})")
@@ -200,7 +160,7 @@ def main() -> int:
         print("✗ dimension mismatch with CREO_KB_EMBEDDING_DIM")
         return 1
 
-    # --- 4. Milvus / Zilliz insert + hybrid search + delete (always live) -----
+    # --- 4. raw Milvus: insert + hybrid search + delete ------------------------
     collection = f"kb_smoke_{uuid4().hex[:8]}"
     store = MilvusVectorStore(
         settings.milvus_uri,
@@ -224,10 +184,15 @@ def main() -> int:
 
     print(f"\n[4] Milvus: creating temporary collection {collection} ...")
     try:
-        leftovers = [n for n in store.list_collections() if n.startswith("kb_smoke_")]
+        leftovers = [
+            n
+            for n in store.list_collections()
+            if n.startswith("kb_smoke_") or n.startswith("app_smoke_")
+        ]
         for leftover in leftovers:
             print(f"    sweeping leftover {leftover} from an earlier run")
             drop_best_effort(leftover)
+
         started = time.perf_counter()
         store.ensure_collection(collection)
         print(
@@ -275,6 +240,73 @@ def main() -> int:
         else:
             print(f"    ⚠ could not drop {collection} — remove it in the Zilliz console")
         store.close()
+
+    # --- 5. app-level chain: IngestionService + trace + KbSearchService --------
+    # Real app wiring (same construction as main.py) against a throwaway KB;
+    # stages 1/3 warmed the shared pipeline cache, so this is quota-free.
+    print("\n[5] app-level chain (IngestionService + trace + KbSearchService) ...")
+    run_dir = cache_root / f"run-{datetime.now(UTC).strftime('%H%M%S')}"
+    app_store = MilvusVectorStore(
+        settings.milvus_uri,
+        token=settings.milvus_token,
+        dim=settings.kb_embedding_dim,
+        analyzer=settings.kb_analyzer,
+        timeout=60.0,
+    )
+    kb_service: SqliteKnowledgeService | None = None
+    collection_name: str | None = None
+    try:
+        kb_service = SqliteKnowledgeService(run_dir / "kb")
+        kb = kb_service.create_kb("app-smoke")
+        collection_name = kb.collectionName
+        with pdf.open("rb") as stream:
+            doc = kb_service.save_upload(
+                kb.id, pdf.name, stream, max_bytes=settings.kb_upload_max_bytes
+            )
+        ingestion = IngestionService(
+            kb_service,
+            parser,
+            embedder,
+            app_store,
+            max_chars=settings.kb_chunk_max_characters,
+            cache=pipeline_cache,
+            parse_profile=settings.unstructured_profile,
+            embedding_model=settings.kb_embedding_model,
+            embedding_dim=settings.kb_embedding_dim,
+        )
+        started = time.perf_counter()
+        ingestion.ingest(doc.id)
+        final = kb_service.get_document(doc.id)
+        print(
+            f"    ingest → status={final.status if final else '?'} "
+            f"chunks={final.chunkCount if final else 0} "
+            f"in {time.perf_counter() - started:.1f}s"
+        )
+        for event in kb_service.list_pipeline_events(doc.id):
+            print(f"      trace: {event.stage:<7} {event.status:<9} {event.durationMs} ms")
+
+        searcher = KbSearchService(kb_service, embedder, app_store)
+        hits = searcher.search("宇树科技 经营宗旨", top_k=3)
+        print(f"    search → {len(hits)} hits")
+        for rank, hit in enumerate(hits, start=1):
+            source = (hit.get("metadata") or {}).get("filename", "?")
+            print(
+                f"      #{rank} {source} p.{hit.get('page')} {preview(hit.get('text', ''), 50)!r}"
+            )
+        if final is None or final.status != "ready" or not hits:
+            print("✗ app-level chain failed")
+            return 1
+    finally:
+        if collection_name is not None:
+            try:
+                app_store.drop_collection(collection_name)
+                print(f"    dropped {collection_name}")
+            except Exception as exc:
+                print(f"    ⚠ could not drop {collection_name}: {exc}")
+        if kb_service is not None:
+            kb_service.close()
+        shutil.rmtree(run_dir, ignore_errors=True)
+        app_store.close()
 
     print("\n✓ smoke test passed")
     return 0

@@ -17,6 +17,7 @@ from app.services.ingestion_service import IngestionService
 from app.services.kb_search import KbSearchService
 from app.services.kb_service import SqliteKnowledgeService
 from app.services.kb_vector_store import MilvusVectorStore
+from app.services.pipeline_cache import PipelineCache
 from app.services.session_service import InMemorySessionService
 from app.services.unstructured_client import UnstructuredClient
 from app.tools.knowledge_tools import make_kb_search_tool
@@ -62,6 +63,9 @@ def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
         analyzer=settings.kb_analyzer,
     )
     search_service = KbSearchService(knowledge_service, embeddings, vector_store)
+    # Content-addressed cache for paid stages: a failed re-run or a
+    # re-upload of the same file never re-spends API quota (ADR-0004).
+    pipeline_cache = PipelineCache(settings.kb_data_dir / "_cache")
 
     application.state.knowledge_service = knowledge_service
     application.state.ingestion_service = IngestionService(
@@ -70,6 +74,10 @@ def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
         embeddings,
         vector_store,
         max_chars=settings.kb_chunk_max_characters,
+        cache=pipeline_cache,
+        parse_profile=settings.unstructured_profile,
+        embedding_model=settings.kb_embedding_model,
+        embedding_dim=settings.kb_embedding_dim,
     )
     application.state.kb_search_service = search_service
     application.state.vector_store_service = vector_store
