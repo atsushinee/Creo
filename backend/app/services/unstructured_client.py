@@ -1,22 +1,35 @@
-"""HTTP client for the self-hosted Unstructured partition endpoint (ADR-0004).
+"""Unstructured Transform API adapter (ADR-0004, updated 2026-09-29).
 
-Only the multipart call we need — deliberately not the `unstructured` Python
-package (dependency discipline). Parameters must be verified against the
-running instance's /general/openapi.json (AGENTS.md §12) when upgrading.
+Wraps the official `unstructured-transform-client` SDK (Transform API v2,
+transform.unstructured.io). `parse.run` blocks until the job completes and the
+ParseResult always carries the canonical `elements` (SDK 0.18.21; see
+TECHNICAL-NOTES) — the adapter flattens them to plain dicts so the ingestion
+pipeline stays SDK-agnostic.
 """
 
-import json
 from pathlib import Path
+from typing import Any
 
-import httpx
+from unstructured_transform_client import TransformClient
 
 from app.core.logging import get_logger
 
 logger = get_logger("services.unstructured")
 
+DEFAULT_SERVER_URL = "https://transform.unstructured.io"
+
 
 class UnstructuredError(RuntimeError):
-    """The partition endpoint call failed."""
+    """The Transform API parse call failed."""
+
+
+def _normalize_server_url(url: str) -> str:
+    """The SDK appends /api/v2 paths itself — strip it if a user pasted the
+    full API base (e.g. https://transform.unstructured.io/api/v2)."""
+    value = url.strip().rstrip("/")
+    if value.endswith("/api/v2"):
+        value = value[: -len("/api/v2")]
+    return value or DEFAULT_SERVER_URL
 
 
 class UnstructuredClient:
@@ -24,68 +37,53 @@ class UnstructuredClient:
 
     def __init__(
         self,
-        base_url: str,
+        api_key: str,
         *,
-        api_key: str = "",
-        timeout: float = 600.0,
-        strategy: str = "hi_res",
-        languages: list[str] | None = None,
-        max_characters: int = 1500,
-        new_after_n_chars: int | None = None,
-        combine_under: int = 300,
-        transport: httpx.BaseTransport | None = None,
+        server_url: str = DEFAULT_SERVER_URL,
+        profile: str = "best",
+        timeout_seconds: float | None = None,
+        transform_client: Any = None,
     ) -> None:
-        headers = {"accept": "application/json"}
-        if api_key:
-            headers["unstructured-api-key"] = api_key
-        self._strategy = strategy
-        self._languages = list(languages or [])
-        self._max_characters = max_characters
-        self._new_after_n_chars = new_after_n_chars or int(max_characters * 0.8)
-        self._combine_under = combine_under
-        self._client = httpx.Client(
-            base_url=base_url.rstrip("/"),
-            timeout=timeout,
-            headers=headers,
-            transport=transport,
+        self._profile = profile
+        self._server_url = _normalize_server_url(server_url)
+        # Injectable for tests; the real client needs an API key (constructor
+        # raises without one) and is built during KB wiring, never at import.
+        self._client = transform_client or TransformClient(
+            api_key=api_key,
+            server_url=self._server_url,
+            timeout_seconds=timeout_seconds,
         )
 
     def close(self) -> None:
-        self._client.close()
+        close = getattr(self._client, "close", None)
+        if callable(close):
+            close()
 
-    def partition_pdf(self, path: Path, filename: str) -> list[dict]:
-        """Parse and chunk one PDF; returns raw Unstructured element dicts."""
-        # by_title chunking: new_after_n_chars is the soft limit that starts a
-        # new chunk, max_characters the hard split (validation: soft <= hard).
-        # Repeated multipart fields (languages) are expressed as list values —
-        # verified against httpx 0.28.1 (list-of-tuples in `data` is not).
-        data: dict[str, str | list[str]] = {
-            "strategy": self._strategy,
-            "chunking_strategy": "by_title",
-            "max_characters": str(self._max_characters),
-            "new_after_n_chars": str(self._new_after_n_chars),
-            "combine_text_under_n_chars": str(self._combine_under),
-            "include_orig_elements": "false",
-            "pdf_infer_table_structure": "true",
-        }
-        if self._languages:
-            data["languages"] = self._languages
+    def parse_pdf(self, path: Path, filename: str) -> list[dict]:
+        """Parse one PDF into element dicts for the ingestion pipeline.
 
-        with path.open("rb") as pdf:
-            files = {"files": (filename, pdf, "application/pdf")}
-            try:
-                response = self._client.post("/general/v0/general", data=data, files=files)
-            except httpx.HTTPError as exc:
-                raise UnstructuredError(f"unstructured request failed: {exc}") from exc
-        if response.status_code != 200:
-            raise UnstructuredError(
-                f"unstructured returned {response.status_code}: {response.text[:300]}"
-            )
+        `include=["text_as_html"]` requests the table HTML projection;
+        `page_number` (one-based) is returned by default on element metadata.
+        """
         try:
-            elements = response.json()
-        except json.JSONDecodeError as exc:
-            raise UnstructuredError("unstructured returned invalid JSON") from exc
-        if not isinstance(elements, list):
-            raise UnstructuredError("unexpected unstructured response shape")
-        logger.info("partitioned %s: %d elements", filename, len(elements))
+            with path.open("rb") as pdf:
+                result = self._client.parse.run(
+                    input=pdf, include=["text_as_html"], profile=self._profile
+                )
+        except Exception as exc:
+            raise UnstructuredError(f"unstructured parse failed: {exc}") from exc
+        elements = [self._element_to_dict(element) for element in (result.elements or [])]
+        logger.info("parsed %s: %d elements (profile=%s)", filename, len(elements), self._profile)
         return elements
+
+    @staticmethod
+    def _element_to_dict(element: Any) -> dict[str, Any]:
+        metadata = getattr(element, "metadata", None)
+        return {
+            "type": getattr(element, "type", "") or "",
+            "text": getattr(element, "text", None),
+            "metadata": {
+                "page_number": getattr(metadata, "page_number", None),
+                "text_as_html": getattr(metadata, "text_as_html", None),
+            },
+        }

@@ -49,6 +49,16 @@ def analyzer_params(spec: str) -> dict[str, Any]:
     return {"type": value or "standard"}
 
 
+def sparse_index_type(uri: str) -> str:
+    """Sparse index type for the BM25 field.
+
+    Zilliz Cloud (dedicated and serverless) manages index internals and only
+    accepts AUTOINDEX; self-hosted Milvus needs an explicit
+    SPARSE_INVERTED_INDEX (AUTOINDEX does not cover BM25 sparse fields there).
+    """
+    return "AUTOINDEX" if "zilliz" in uri.lower() else "SPARSE_INVERTED_INDEX"
+
+
 def normalize_hit(hit: Any) -> dict[str, Any]:
     """Flatten one search hit (dict or object form) into a plain payload."""
     entity = hit.get("entity", {}) if isinstance(hit, dict) else getattr(hit, "entity", {}) or {}
@@ -75,6 +85,7 @@ class MilvusVectorStore:
         analyzer: str = "chinese",
     ) -> None:
         self._dim = dim
+        self._uri = uri
         self._analyzer_params = analyzer_params(analyzer)
         # Fails fast on unreachable/misconfigured endpoints; the caller (main
         # lifespan) treats that as "KB disabled" and logs a warning.
@@ -118,9 +129,10 @@ class MilvusVectorStore:
         )
         index_params = self._client.prepare_index_params()
         index_params.add_index(field_name="dense", index_type="AUTOINDEX", metric_type="COSINE")
-        # AUTOINDEX must not be used for the BM25 sparse field.
         index_params.add_index(
-            field_name="sparse", index_type="SPARSE_INVERTED_INDEX", metric_type="BM25"
+            field_name="sparse",
+            index_type=sparse_index_type(self._uri),
+            metric_type="BM25",
         )
         self._client.create_collection(name, schema=schema, index_params=index_params)
         logger.info(

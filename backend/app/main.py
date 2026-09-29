@@ -34,7 +34,7 @@ def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
         name
         for name, value in (
             ("CREO_MILVUS_URI", settings.milvus_uri),
-            ("CREO_UNSTRUCTURED_API_URL", settings.unstructured_api_url),
+            ("CREO_UNSTRUCTURED_API_KEY", settings.unstructured_api_key),
             ("CREO_KB_EMBEDDING_BASE_URL", settings.kb_embedding_base_url),
         )
         if not value
@@ -45,12 +45,10 @@ def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
 
     knowledge_service = SqliteKnowledgeService(settings.kb_data_dir)
     unstructured = UnstructuredClient(
-        settings.unstructured_api_url,
-        api_key=settings.unstructured_api_key,
-        timeout=settings.unstructured_timeout,
-        strategy=settings.unstructured_strategy,
-        languages=settings.unstructured_language_list,
-        max_characters=settings.kb_chunk_max_characters,
+        settings.unstructured_api_key,
+        server_url=settings.unstructured_server_url,
+        profile=settings.unstructured_profile,
+        timeout_seconds=settings.unstructured_timeout_seconds,
     )
     embeddings = OpenAIEmbeddingClient(
         settings.kb_embedding_base_url,
@@ -67,7 +65,11 @@ def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
 
     application.state.knowledge_service = knowledge_service
     application.state.ingestion_service = IngestionService(
-        knowledge_service, unstructured, embeddings, vector_store
+        knowledge_service,
+        unstructured,
+        embeddings,
+        vector_store,
+        max_chars=settings.kb_chunk_max_characters,
     )
     application.state.kb_search_service = search_service
     application.state.vector_store_service = vector_store

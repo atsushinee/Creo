@@ -15,6 +15,7 @@ dependencies = [
     "pymilvus>=3.0.2",
     "python-dotenv>=1.0",
     "python-multipart>=0.0.32",
+    "unstructured-transform-client>=0.18.21",
     "uvicorn[standard]>=0.30",
 ]
 

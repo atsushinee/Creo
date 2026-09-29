@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 from typing import Any
 
-from app.services.ingestion_service import IngestionService, normalize_elements
+from app.services.ingestion_service import IngestionService, pack_elements
 from app.services.kb_service import KbDocument, KnowledgeBase, SqliteKnowledgeService
 
 
@@ -14,7 +14,7 @@ class FakeUnstructured:
         self.error = error
         self.calls: list[tuple[Path, str]] = []
 
-    def partition_pdf(self, path: Path, filename: str) -> list[dict]:
+    def parse_pdf(self, path: Path, filename: str) -> list[dict]:
         self.calls.append((path, filename))
         if self.error is not None:
             raise self.error
@@ -48,7 +48,9 @@ class FakeVectorStore:
 
 
 def make_pipeline(
-    tmp_path: Path, elements: list[dict] | None = None, error: Exception | None = None
+    tmp_path: Path,
+    elements: list[dict] | None = None,
+    error: Exception | None = None,
 ) -> tuple[SqliteKnowledgeService, KnowledgeBase, KbDocument, IngestionService, FakeVectorStore]:
     kb_service = SqliteKnowledgeService(tmp_path / "kb")
     kb = kb_service.create_kb("docs")
@@ -60,10 +62,20 @@ def make_pipeline(
     return kb_service, kb, doc, pipeline, vector_store
 
 
-def test_normalize_elements() -> None:
+def test_pack_elements_groups_and_keeps_tables() -> None:
     elements = [
         {"type": "NarrativeText", "text": "   ", "metadata": {}},  # dropped: empty
         {"type": "NarrativeText", "text": "short", "metadata": {"page_number": 1}},  # too short
+        {
+            "type": "NarrativeText",
+            "text": "第一段落内容足够长凑字数。" * 3,
+            "metadata": {"page_number": 1},
+        },
+        {
+            "type": "NarrativeText",
+            "text": "第二段落内容也不短凑字。" * 3,
+            "metadata": {"page_number": 2},
+        },
         {
             "type": "Table",
             "text": "tiny",
@@ -71,17 +83,44 @@ def test_normalize_elements() -> None:
                 "page_number": 3,
                 "text_as_html": "<table><tr><td>总资产</td></tr></table>",
             },
-        },  # HTML preferred over the tiny plain text
+        },  # HTML preferred, table stays standalone
         {"type": "NarrativeText", "text": "x" * 25, "metadata": {"page_number": "4"}},
         "not-a-dict",  # ignored
     ]
-    chunks = normalize_elements(elements, "a.pdf")
-    assert len(chunks) == 2
-    assert chunks[0]["metadata"]["type"] == "Table"
-    assert chunks[0]["text"].startswith("<table>")
-    assert chunks[0]["page_number"] == 3
-    assert chunks[0]["metadata"]["filename"] == "a.pdf"
-    assert chunks[1]["page_number"] == 4
+    chunks = pack_elements(elements, "a.pdf", max_chars=100)
+
+    assert len(chunks) == 3
+    merged = chunks[0]
+    assert merged["page_number"] == 1  # page of the first element in the pack
+    assert merged["metadata"]["filename"] == "a.pdf"
+    assert "第一段落" in merged["text"] and "第二段落" in merged["text"]
+    assert chunks[1]["metadata"]["type"] == "Table"
+    assert chunks[1]["text"].startswith("<table>")
+    assert chunks[1]["page_number"] == 3
+    assert chunks[2]["page_number"] == 4  # string page number coerced
+
+
+def test_pack_elements_soft_limit_starts_new_chunk() -> None:
+    paragraphs = [
+        {"type": "NarrativeText", "text": "字" * 30, "metadata": {"page_number": i + 1}}
+        for i in range(3)
+    ]
+    chunks = pack_elements(paragraphs, "a.pdf", max_chars=50)  # soft limit 40
+
+    assert len(chunks) == 3  # 30+30 > 40 → each element lands in its own chunk
+    assert [chunk["page_number"] for chunk in chunks] == [1, 2, 3]
+
+
+def test_pack_elements_hard_splits_oversized() -> None:
+    elements = [{"type": "NarrativeText", "text": "y" * 250, "metadata": {"page_number": 7}}]
+    chunks = pack_elements(elements, "a.pdf", max_chars=100)
+
+    assert [len(chunk["text"]) for chunk in chunks] == [100, 100, 50]
+    assert all(chunk["page_number"] == 7 for chunk in chunks)
+
+
+def test_pack_elements_empty_input() -> None:
+    assert pack_elements([{"type": "Image", "text": "", "metadata": {}}], "a.pdf") == []
 
 
 def test_ingest_happy_path(tmp_path: Path) -> None:

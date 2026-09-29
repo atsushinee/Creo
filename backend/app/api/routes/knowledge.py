@@ -29,7 +29,7 @@ def _require(service: Any) -> Any:
         raise HTTPException(
             status_code=503,
             detail="knowledge base is disabled (set CREO_KB_ENABLED=true and configure"
-            " CREO_MILVUS_URI / CREO_UNSTRUCTURED_API_URL / CREO_KB_EMBEDDING_BASE_URL)",
+            " CREO_MILVUS_URI / CREO_UNSTRUCTURED_API_KEY / CREO_KB_EMBEDDING_BASE_URL)",
         )
     return service
 

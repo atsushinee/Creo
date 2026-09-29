@@ -69,7 +69,7 @@ creo/
 - Node.js ≥ 20.19 (22 recommended) + **pnpm 12** (`corepack enable` or `npm i -g pnpm`)
 - Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/)
 - One LLM API key (any provider; OpenAI-compatible endpoints are supported via a custom base_url)
-- For the knowledge base (optional): a [Zilliz Cloud](https://zilliz.com/cloud) cluster or self-hosted Milvus ≥ 2.5, a self-hosted [Unstructured](https://github.com/Unstructured-IO/unstructured-api) API, and an embedding API key (e.g. `BAAI/bge-m3` on SiliconFlow)
+- For the knowledge base (optional): a [Zilliz Cloud](https://zilliz.com/cloud) cluster or self-hosted Milvus ≥ 2.5, an [Unstructured](https://transform.unstructured.io) Transform API key, and an embedding API key (e.g. `BAAI/bge-m3` on SiliconFlow)
 
 ### 1. Backend
 
@@ -130,21 +130,17 @@ CREO_MILVUS_TOKEN=                                                # Zilliz Cloud
 
 - Zilliz Cloud: create a Dedicated cluster, copy the endpoint from the cluster page and an API key from the API Keys page. Server-side BM25 requires Milvus ≥ 2.5 (all current Zilliz Cloud clusters qualify).
 - Each knowledge base gets its own collection (`kb_{slug}_{id}`); collections are created lazily on first ingest.
+- Index types are chosen automatically: `AUTOINDEX` on Zilliz Cloud (dedicated & serverless), explicit `SPARSE_INVERTED_INDEX` + BM25 on self-hosted Milvus.
 
-### 2. Unstructured (PDF parsing, self-hosted)
+### 2. Unstructured Transform API (PDF parsing)
 
 ```ini
-CREO_UNSTRUCTURED_API_URL=http://localhost:8000
-# CREO_UNSTRUCTURED_API_KEY=       # only if the service sets UNSTRUCTURED_API_KEY
+CREO_UNSTRUCTURED_API_KEY=          # API key from the Unstructured platform
+# CREO_UNSTRUCTURED_SERVER_URL=https://transform.unstructured.io
+# CREO_UNSTRUCTURED_PROFILE=best    # balanced | best | fast (best ≈ hi_res quality)
 ```
 
-Run the service locally (the full image includes the `hi_res` layout model + OCR):
-
-```bash
-docker run -p 8000:8000 -d --rm quay.io/unstructuredio/unstructured-api:latest
-```
-
-Defaults used by Creo: `strategy=hi_res` (handles scanned PDFs), `chunking_strategy=by_title`, `max_characters=1500`, OCR languages `chi_sim,eng`. Tune via `CREO_UNSTRUCTURED_STRATEGY` / `CREO_UNSTRUCTURED_LANGUAGES`.
+Parsing goes through Unstructured's Transform API via the official `unstructured-transform-client` SDK. Creo requests structured elements (one-based page numbers, table HTML) and does the chunking **client-side**: consecutive elements are packed to ~1500 characters, tables stay standalone with their HTML. `best` is the quality tier (handles scanned PDFs); `balanced` is faster and cheaper.
 
 ### 3. Embeddings (dense channel)
 
@@ -183,11 +179,9 @@ All variables use the `CREO_` prefix and are set in `backend/.env` (see `.env.ex
 | `CREO_KB_ENABLED` | `false` | Master switch for the knowledge base |
 | `CREO_MILVUS_URI` | — | Zilliz Cloud endpoint or `http://host:19530` |
 | `CREO_MILVUS_TOKEN` | — | Zilliz Cloud API key (empty for unauthenticated self-hosting) |
-| `CREO_UNSTRUCTURED_API_URL` | — | Self-hosted Unstructured base URL |
-| `CREO_UNSTRUCTURED_API_KEY` | — | Only if the service requires one |
-| `CREO_UNSTRUCTURED_STRATEGY` | `hi_res` | `auto` \| `fast` \| `hi_res` \| `ocr_only` |
-| `CREO_UNSTRUCTURED_LANGUAGES` | `chi_sim,eng` | OCR languages (Tesseract codes) |
-| `CREO_UNSTRUCTURED_TIMEOUT` | `600` | Seconds; hi_res is slow on large PDFs |
+| `CREO_UNSTRUCTURED_API_KEY` | — | Unstructured Transform API key (required for the KB) |
+| `CREO_UNSTRUCTURED_SERVER_URL` | `https://transform.unstructured.io` | Override for other deployments; a trailing `/api/v2` is stripped automatically (legacy name `CREO_UNSTRUCTURED_API_URL` still accepted) |
+| `CREO_UNSTRUCTURED_PROFILE` | `best` | Parsing tier: `balanced` \| `best` \| `fast` |
 | `CREO_KB_EMBEDDING_BASE_URL` | — | OpenAI-compatible `/embeddings` base URL |
 | `CREO_KB_EMBEDDING_API_KEY` | — | Bearer token |
 | `CREO_KB_EMBEDDING_MODEL` | `BAAI/bge-m3` | Embedding model |

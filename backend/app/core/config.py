@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -49,11 +50,17 @@ class Settings(BaseSettings):
     kb_data_dir: Path = BACKEND_ROOT / "data" / "kb"
     milvus_uri: str = ""  # Zilliz Cloud endpoint or http://host:19530
     milvus_token: str = ""  # Zilliz Cloud API key (empty for unauthenticated self-hosting)
-    unstructured_api_url: str = ""  # e.g. http://localhost:8000
+    # Unstructured Transform API (transform.unstructured.io); key required.
+    # CREO_UNSTRUCTURED_API_URL is kept as an alias (pre-partition-era name).
+    unstructured_server_url: str = Field(
+        default="https://transform.unstructured.io",
+        validation_alias=AliasChoices(
+            "CREO_UNSTRUCTURED_SERVER_URL", "CREO_UNSTRUCTURED_API_URL"
+        ),
+    )
     unstructured_api_key: str = ""
-    unstructured_timeout: float = 600.0  # hi_res on large PDFs is slow
-    unstructured_strategy: str = "hi_res"  # auto | fast | hi_res | ocr_only
-    unstructured_languages: str = "chi_sim,eng"  # OCR languages, comma-separated
+    unstructured_profile: str = "best"  # balanced | best | fast (best ≈ hi_res quality)
+    unstructured_timeout_seconds: float | None = None
     kb_embedding_base_url: str = ""  # OpenAI-compatible, e.g. https://api.siliconflow.cn/v1
     kb_embedding_api_key: str = ""
     kb_embedding_model: str = "BAAI/bge-m3"
@@ -72,10 +79,6 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
-
-    @property
-    def unstructured_language_list(self) -> list[str]:
-        return [lang.strip() for lang in self.unstructured_languages.split(",") if lang.strip()]
 
     @property
     def kb_upload_max_bytes(self) -> int:

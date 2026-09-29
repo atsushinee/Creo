@@ -3,7 +3,21 @@
 import pytest
 
 from app.services.kb_search import KbNotFoundError, KbSearchService, rrf_merge
-from app.services.kb_vector_store import VectorStoreError, analyzer_params, normalize_hit
+from app.services.kb_vector_store import (
+    VectorStoreError,
+    analyzer_params,
+    normalize_hit,
+    sparse_index_type,
+)
+
+
+def test_sparse_index_type_by_uri() -> None:
+    assert (
+        sparse_index_type("https://in03-abc.serverless.gcp-us-west1.cloud.zilliz.com")
+        == "AUTOINDEX"
+    )
+    assert sparse_index_type("https://in03-abc.api-us-west-1.zillizcloud.com") == "AUTOINDEX"
+    assert sparse_index_type("http://localhost:19530") == "SPARSE_INVERTED_INDEX"
 
 
 def test_analyzer_params_named_types() -> None:

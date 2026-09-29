@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-09-29（晚）
+
+### 解析后端切换：自托管 Partition Endpoint → Unstructured Transform API（SDK 0.18.21 实测）
+
+用户提供的是 Transform API（transform.unstructured.io）与官方 SDK，按 AGENTS.md §12 对安装版本逐项实测：
+
+- **`ParseResult.elements` 恒返回**（必填字段，"canonical document"）；`markdown` 仅在请求 markdown 表示时有值。我们直接消费 elements，不依赖 markdown。
+- **分块搬到客户端**：v2 无 chunking 参数。`pack_elements()`：连续叙事元素贪心打包（软限制 = 80% max_chars）、Table 独立成块（text_as_html 优先）、单元素超长硬切、<20 字符丢弃；块页码取首个元素的 `page_number`。
+- `Element.metadata.page_number`（1-based）默认返回；`text_as_html` 需显式 `include=["text_as_html"]`。
+- **profile 取代 strategy**：`balanced | best | fast`（best ≈ 旧 hi_res 质量档）。OCR 语言/策略参数在 v2 不存在，对应配置项删除。
+- `parse.run(wait_seconds=None)` → 不发 Prefer 头，**同步阻塞**到任务完成（跑在 BackgroundTasks 线程池，不影响事件循环）。
+- **SDK 的 `server_url` 不能带 `/api/v2`**：SDK 自行拼接 `/api/v2/...` 路径。适配层 `_normalize_server_url` 剥离该后缀；`Settings` 用 `AliasChoices` 兼容旧变量名 `CREO_UNSTRUCTURED_API_URL`。
+- `TransformClient` 构造为 keyword-only（`api_key/server_url/timeout_seconds/retries: RetryConfig`），缺 key 构造即抛——lifespan 的缺配置检查先行拦截。
+- 内置重试：GET/DELETE 对任意瞬时失败重试；写操作只在"确定未到达服务端"时重试（连接拒绝/DNS），读超时与 5xx 不重试——我们在管线层有自己的失败兜底（文档状态机）。
+
+**Zilliz 索引自适应**：`sparse_index_type(uri)` —— uri 含 "zilliz"（zillizcloud.com / *.cloud.zilliz.com，dedicated 与 serverless）→ AUTOINDEX；自托管 Milvus → 显式 SPARSE_INVERTED_INDEX（AUTOINDEX 不覆盖 BM25 稀疏字段）。
+
+---
+
 ## 2026-09-29
 
 ### 知识库 v1 集成（Unstructured + Milvus/Zilliz + BM25/Dense 混合检索）

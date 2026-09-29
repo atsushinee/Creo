@@ -1,5 +1,6 @@
-"""Ingestion pipeline (ADR-0004): PDF → Unstructured → chunk normalization →
-dense embeddings → Milvus insert (sparse BM25 is derived server-side).
+"""Ingestion pipeline (ADR-0004, updated): PDF → Unstructured Transform API →
+element packing (client-side chunking) → dense embeddings → Milvus insert
+(sparse BM25 is derived server-side).
 
 Runs synchronously on a worker thread — FastAPI BackgroundTasks executes sync
 callables via its threadpool. Document status lives in the KnowledgeService so
@@ -23,7 +24,7 @@ class IngestionError(RuntimeError):
 
 
 class UnstructuredClientLike(Protocol):
-    def partition_pdf(self, path: Path, filename: str) -> list[dict]: ...
+    def parse_pdf(self, path: Path, filename: str) -> list[dict]: ...
 
 
 class EmbeddingClientLike(Protocol):
@@ -36,26 +37,30 @@ class VectorStoreLike(Protocol):
     def delete_doc(self, name: str, doc_id: str) -> None: ...
 
 
-def normalize_elements(
+def pack_elements(
     elements: list[dict],
     filename: str,
     *,
+    max_chars: int = 1500,
     min_chars: int = MIN_CHUNK_CHARS,
 ) -> list[dict[str, Any]]:
-    """Map raw Unstructured elements to index rows.
+    """Group consecutive Unstructured elements into retrieval chunks.
 
-    Drops empty/too-short chunks, prefers table HTML for Table elements and
-    keeps page numbers for citations.
+    The Transform API returns un-chunked elements, so chunking happens here
+    (the old by_title behaviour moved client-side): tables stay standalone
+    with their HTML projection, narrative elements are greedily packed up to a
+    soft limit (~80% of max_chars), single oversized elements are hard-split,
+    and too-short fragments are dropped. Page numbers come from the first
+    element of each chunk.
     """
-    chunks: list[dict[str, Any]] = []
+    prepared: list[dict[str, Any]] = []
     for element in elements:
         if not isinstance(element, dict):
             continue
         text = str(element.get("text") or "").strip()
-        meta = element.get("metadata")
-        if not isinstance(meta, dict):
-            meta = {}
-        if element.get("type") == "Table":
+        meta = element.get("metadata") if isinstance(element.get("metadata"), dict) else {}
+        is_table = element.get("type") == "Table"
+        if is_table:
             html = meta.get("text_as_html")
             if isinstance(html, str) and len(html.strip()) > len(text):
                 text = html.strip()
@@ -65,13 +70,67 @@ def normalize_elements(
             page = int(meta.get("page_number") or 0)
         except (TypeError, ValueError):
             page = 0
-        chunks.append(
+        prepared.append(
             {
                 "text": text[:MAX_CHUNK_CHARS],
-                "page_number": page,
-                "metadata": {"type": str(element.get("type") or ""), "filename": filename},
+                "page": page,
+                "type": str(element.get("type") or ""),
+                "is_table": is_table,
             }
         )
+
+    soft_limit = max(min_chars, int(max_chars * 0.8))
+    chunks: list[dict[str, Any]] = []
+    buffer: list[str] = []
+    buffer_len = 0
+    buffer_page = 0
+    buffer_type = ""
+
+    def flush() -> None:
+        nonlocal buffer, buffer_len
+        if not buffer:
+            return
+        chunks.append(
+            {
+                "text": "\n\n".join(buffer),
+                "page_number": buffer_page,
+                "metadata": {"type": buffer_type, "filename": filename},
+            }
+        )
+        buffer, buffer_len = [], 0
+
+    for item in prepared:
+        if item["is_table"]:
+            flush()
+            chunks.append(
+                {
+                    "text": item["text"],
+                    "page_number": item["page"],
+                    "metadata": {"type": "Table", "filename": filename},
+                }
+            )
+            continue
+        if buffer and buffer_len + len(item["text"]) > soft_limit:
+            flush()
+        if not buffer:
+            buffer_page = item["page"]
+            buffer_type = item["type"]
+        if len(item["text"]) > max_chars:
+            flush()
+            for start in range(0, len(item["text"]), max_chars):
+                piece = item["text"][start : start + max_chars]
+                if start == 0 or len(piece) >= min_chars:
+                    chunks.append(
+                        {
+                            "text": piece,
+                            "page_number": item["page"],
+                            "metadata": {"type": item["type"], "filename": filename},
+                        }
+                    )
+            continue
+        buffer.append(item["text"])
+        buffer_len += len(item["text"])
+    flush()
     return chunks
 
 
@@ -84,11 +143,14 @@ class IngestionService:
         unstructured: UnstructuredClientLike,
         embeddings: EmbeddingClientLike,
         vector_store: VectorStoreLike,
+        *,
+        max_chars: int = 1500,
     ) -> None:
         self._knowledge = knowledge_service
         self._unstructured = unstructured
         self._embeddings = embeddings
         self._vector = vector_store
+        self._max_chars = max_chars
 
     def ingest(self, doc_id: str) -> None:
         """Process one document; never raises — failures land on the doc row."""
@@ -106,14 +168,12 @@ class IngestionService:
 
         self._knowledge.update_document_status(doc_id, "processing")
         try:
-            elements = self._unstructured.partition_pdf(
+            elements = self._unstructured.parse_pdf(
                 self._knowledge.document_path(doc), doc.filename
             )
-            chunks = normalize_elements(elements, doc.filename)
+            chunks = pack_elements(elements, doc.filename, max_chars=self._max_chars)
             if not chunks:
-                raise IngestionError(
-                    "no extractable text (scanned PDF? check strategy/OCR languages)"
-                )
+                raise IngestionError("no extractable text (scanned PDF? try profile=best)")
             vectors = self._embeddings.embed_texts([chunk["text"] for chunk in chunks])
             rows = [
                 {

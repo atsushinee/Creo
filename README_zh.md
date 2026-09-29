@@ -69,7 +69,7 @@ creo/
 - Node.js ≥ 20.19（推荐 22）+ **pnpm 12**（`corepack enable` 或 `npm i -g pnpm`）
 - Python ≥ 3.12 与 [uv](https://docs.astral.sh/uv/)
 - 一个 LLM API Key（支持任意 provider，OpenAI 兼容端点可自定义 base_url）
-- 知识库（可选）：[Zilliz Cloud](https://zilliz.com/cloud) 集群或自托管 Milvus ≥ 2.5、自托管 [Unstructured](https://github.com/Unstructured-IO/unstructured-api) API、Embedding API Key（如 SiliconFlow 上的 `BAAI/bge-m3`）
+- 知识库（可选）：[Zilliz Cloud](https://zilliz.com/cloud) 集群或自托管 Milvus ≥ 2.5、[Unstructured](https://transform.unstructured.io) Transform API Key、Embedding API Key（如 SiliconFlow 上的 `BAAI/bge-m3`）
 
 ### 1. 启动后端
 
@@ -130,21 +130,17 @@ CREO_MILVUS_TOKEN=                                                # Zilliz Cloud
 
 - Zilliz Cloud：创建 Dedicated 集群后，从集群页复制 endpoint、从 API Keys 页复制密钥。服务端 BM25 需要 Milvus ≥ 2.5（当前所有 Zilliz Cloud 集群均满足）。
 - 每个知识库对应一个 collection（`kb_{slug}_{id}`），首次入库时才懒创建。
+- 索引类型自动选择：Zilliz Cloud（dedicated 与 serverless）用 AUTOINDEX；自托管 Milvus 显式 `SPARSE_INVERTED_INDEX` + BM25。
 
-### 2. Unstructured（PDF 解析，自托管）
+### 2. Unstructured Transform API（PDF 解析）
 
 ```ini
-CREO_UNSTRUCTURED_API_URL=http://localhost:8000
-# CREO_UNSTRUCTURED_API_KEY=       # 仅当服务端设置了 UNSTRUCTURED_API_KEY 时需要
+CREO_UNSTRUCTURED_API_KEY=          # Unstructured 平台获取的 API Key
+# CREO_UNSTRUCTURED_SERVER_URL=https://transform.unstructured.io
+# CREO_UNSTRUCTURED_PROFILE=best    # balanced | best | fast（best ≈ hi_res 质量档）
 ```
 
-本地起服务（完整镜像包含 hi_res 版面模型与 OCR）：
-
-```bash
-docker run -p 8000:8000 -d --rm quay.io/unstructuredio/unstructured-api:latest
-```
-
-Creo 使用的默认参数：`strategy=hi_res`（扫描件兜底）、`chunking_strategy=by_title`、`max_characters=1500`、OCR 语言 `chi_sim,eng`。可通过 `CREO_UNSTRUCTURED_STRATEGY` / `CREO_UNSTRUCTURED_LANGUAGES` 调整。
+解析走 Unstructured 的 Transform API（官方 `unstructured-transform-client` SDK）。Creo 请求结构化 elements（含 1-based 页码与表格 HTML），**分块在客户端完成**：连续元素贪心打包至约 1500 字符，表格独立成块。`best` 为质量档（扫描件可用）；`balanced` 更快更省。
 
 ### 3. Embedding（密集向量通道）
 
@@ -183,11 +179,9 @@ CREO_KB_EMBEDDING_DIM=1024
 | `CREO_KB_ENABLED` | `false` | 知识库总开关 |
 | `CREO_MILVUS_URI` | — | Zilliz Cloud endpoint 或 `http://host:19530` |
 | `CREO_MILVUS_TOKEN` | — | Zilliz Cloud API Key（自托管无认证时留空） |
-| `CREO_UNSTRUCTURED_API_URL` | — | 自托管 Unstructured 地址 |
-| `CREO_UNSTRUCTURED_API_KEY` | — | 仅当服务端要求时填写 |
-| `CREO_UNSTRUCTURED_STRATEGY` | `hi_res` | `auto` \| `fast` \| `hi_res` \| `ocr_only` |
-| `CREO_UNSTRUCTURED_LANGUAGES` | `chi_sim,eng` | OCR 语言（Tesseract 代码） |
-| `CREO_UNSTRUCTURED_TIMEOUT` | `600` | 秒；hi_res 处理大 PDF 较慢 |
+| `CREO_UNSTRUCTURED_API_KEY` | — | Unstructured Transform API Key（知识库必填） |
+| `CREO_UNSTRUCTURED_SERVER_URL` | `https://transform.unstructured.io` | 其他部署时覆盖；结尾的 `/api/v2` 会被自动剥离（旧变量名 `CREO_UNSTRUCTURED_API_URL` 仍兼容） |
+| `CREO_UNSTRUCTURED_PROFILE` | `best` | 解析档位：`balanced` \| `best` \| `fast` |
 | `CREO_KB_EMBEDDING_BASE_URL` | — | OpenAI 兼容 `/embeddings` 地址 |
 | `CREO_KB_EMBEDDING_API_KEY` | — | Bearer Token |
 | `CREO_KB_EMBEDDING_MODEL` | `BAAI/bge-m3` | Embedding 模型 |

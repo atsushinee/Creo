@@ -4,6 +4,30 @@
 
 ---
 
+## [2026-09-29] Transform SDK 的 server_url 不能带 /api/v2 路径
+
+### Problem
+
+按控制台示例把 API base（`https://transform.unstructured.io/api/v2`）直接配为 SDK 的 `server_url`，所有请求会拼成 `/api/v2/api/v2/...` 双路径。
+
+### Cause
+
+SDK 生成的 API 路径已包含 `/api/v2` 前缀，`server_url` 只应是主机 origin。
+
+### Solution
+
+适配层 `_normalize_server_url` 自动剥离结尾的 `/api/v2` 与 `/`；配置项用 `AliasChoices` 兼容旧变量名 `CREO_UNSTRUCTURED_API_URL`，存量 `.env` 无需改名。
+
+### Lesson
+
+SDK 的 `server_url`/`base_url` 语义（origin vs 完整 API base）每个库不同，接入前看生成的路径定义而不是示例截图。
+
+### Related
+
+backend/app/services/unstructured_client.py · backend/app/core/config.py · docs/development/TECHNICAL-NOTES.md
+
+---
+
 ## [2026-09-29] httpx 0.28 的 multipart 不再接受 data= 元组列表
 
 ### Problem

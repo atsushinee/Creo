@@ -16,8 +16,8 @@
 
 ### Added
 
-- **知识库 v1（ADR-0004）**：支持创建多个知识库（分类）并上传 PDF，后台经自托管 Unstructured 解析切块（hi_res + by_title），以 bge-m3 密集向量 + Milvus 服务端 BM25 稀疏向量双通道写入 Zilliz；Agent 新增 `search_knowledge_base` 工具做 BM25/Dense 混合检索并引用出处；前端新增 `/knowledge` 管理页（上传、解析状态轮询、失败重试、删除）。默认关闭：`CREO_KB_ENABLED=true` 且配齐 `CREO_MILVUS_URI/TOKEN`、`CREO_UNSTRUCTURED_API_URL`、`CREO_KB_EMBEDDING_*` 后启用；未配齐时 KB 端点返回 503、工具不注册，聊天主链路不受影响。
-- 新增直接依赖：`pymilvus`（仅 `services/kb_vector_store.py` 可 import，边界脚本强制）、`httpx`（自 dev 组提升为运行时依赖）、`python-multipart`（multipart 上传）。
+- **知识库 v1（ADR-0004）**：支持创建多个知识库（分类）并上传 PDF，后台经 Unstructured Transform API 解析（profile=best，含页码与表格 HTML）并做客户端分块，以 bge-m3 密集向量 + Milvus 服务端 BM25 稀疏向量双通道写入 Zilliz（云上 AUTOINDEX 自适应）；Agent 新增 `search_knowledge_base` 工具做 BM25/Dense 混合检索并引用出处；前端新增 `/knowledge` 管理页（上传、解析状态轮询、失败重试、删除）。默认关闭：`CREO_KB_ENABLED=true` 且配齐 `CREO_MILVUS_URI/TOKEN`、`CREO_UNSTRUCTURED_API_KEY`、`CREO_KB_EMBEDDING_*` 后启用；未配齐时 KB 端点返回 503、工具不注册，聊天主链路不受影响。
+- 新增直接依赖：`unstructured-transform-client`（Transform API 官方 SDK）、`pymilvus`（仅 `services/kb_vector_store.py` 可 import，边界脚本强制）、`httpx`（自 dev 组提升为运行时依赖）、`python-multipart`（multipart 上传）。
 - **LLM 配置开放自定义**（同上 Changed）：`.env.example` 提供 DeepSeek / Ollama / Anthropic 等完整示例。
 - 仓库边界与设计 token 自动检查脚本 `scripts/check-boundaries.mjs`（借鉴 OpenBitFun 的 check-scripts 文化），强制 AGENTS.md 分层边界与 DESIGN.md 颜色纪律，已接入 pre-commit 首道检查。
 - Agent 会话基础链路：React Agent UI → SSE → FastAPI → DeepAgents → LLM → Tools → Result，全程流式。

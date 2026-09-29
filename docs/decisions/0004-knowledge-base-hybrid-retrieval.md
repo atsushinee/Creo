@@ -22,6 +22,17 @@ MVP（Agent 基础链路）稳定后，需要把本地 PDF 沉淀为可检索的
 8. **Agent 集成**：`search_knowledge_base` 工具（`tools/knowledge_tools.py` 工厂闭包注入 `KbSearchService`）；**事件协议零变更**（复用 `tool_start`/`tool_result`；`source_added` 仍预留）。
 9. **配置开关 `CREO_KB_ENABLED`（默认 false）**；未配置 Milvus / Unstructured / Embedding 时 KB 端点与工具整体不注册，Agent 主链路不受影响（优雅降级）。
 
+## Update（2026-09-29 晚）：解析后端切换为 Unstructured Transform API
+
+实际环境核查后，解析服务不是自托管 Partition Endpoint，而是 **Unstructured Transform API**（transform.unstructured.io，官方 SDK `unstructured-transform-client` 0.18.21）。受影响的决策点：
+
+- **Decision 2 作废**：v2 无 chunking/strategy/OCR-language 参数。分块移到客户端 `pack_elements()`（连续叙事元素贪心打包至软限制 ≈80% max_chars、Table 独立成块、超长元素硬切、<20 字符丢弃）；`CREO_UNSTRUCTURED_PROFILE=best` 取代 hi_res 质量档（balanced/best/fast）。
+- 页码引用保留：`Element.metadata.page_number`（1-based）默认返回；表格 HTML 经 `include=["text_as_html"]` 获取（取代 `pdf_infer_table_structure`）。
+- 新增直接依赖 `unstructured-transform-client`；连接配置改为 `CREO_UNSTRUCTURED_API_KEY`（必需）+ 可选 `CREO_UNSTRUCTURED_SERVER_URL`（旧名 `CREO_UNSTRUCTURED_API_URL` 经 AliasChoices 兼容，`/api/v2` 后缀自动剥离——SDK 自己拼接 API 路径）。
+- **Decision 6 修订（索引选择自适应）**：Zilliz Cloud（dedicated 与 serverless）只接受 AUTOINDEX；自托管 Milvus 的 BM25 稀疏字段必须显式 `SPARSE_INVERTED_INDEX`。`sparse_index_type(uri)` 按 uri 自动选择。
+
+其余决策（每 KB 一 collection、服务端 BM25 Function、RRF 混合检索、BackgroundTasks、事件协议零变更、优雅降级）不变。
+
 ## Alternatives
 
 | 方案 | 不选原因 |
