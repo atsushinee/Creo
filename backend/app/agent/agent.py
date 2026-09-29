@@ -20,16 +20,19 @@ def build_agent(
     model: Any,
     instructions: str,
     checkpointer: MemorySaver | None = None,
+    tools: list | None = None,
 ) -> Any:
     """Create the DeepAgents graph: system prompt + registered tools + memory.
 
     The checkpointer gives per-thread conversation memory (thread_id =
     session_id). DeepAgents API note (verified against 0.7.18): the system
-    prompt parameter is `system_prompt`, not `instructions`.
+    prompt parameter is `system_prompt`, not `instructions`. `tools` carries
+    extra tools injected at composition time (e.g. the knowledge base
+    retrieval tool, ADR-0004) and is merged after the built-in demo tools.
     """
     return create_deep_agent(
         model=model,
-        tools=list(DEMO_TOOLS),
+        tools=[*DEMO_TOOLS, *(tools or [])],
         system_prompt=instructions,
         checkpointer=checkpointer,
         middleware=[ToolErrorMiddleware()],
@@ -42,6 +45,7 @@ def make_agent_builder(
     instructions: str,
     model_api_key: str = "",
     model_base_url: str = "",
+    extra_tools: list | None = None,
 ) -> Callable[[], Any]:
     """Return a lazily-invoked agent builder sharing one in-process checkpointer.
 
@@ -58,6 +62,11 @@ def make_agent_builder(
             api_key=model_api_key or None,
             base_url=model_base_url or None,
         )
-        return build_agent(model=model, instructions=instructions, checkpointer=checkpointer)
+        return build_agent(
+            model=model,
+            instructions=instructions,
+            checkpointer=checkpointer,
+            tools=extra_tools,
+        )
 
     return build

@@ -4,6 +4,39 @@
 
 ---
 
+## 2026-09-29
+
+### 知识库 v1 集成（Unstructured + Milvus/Zilliz + BM25/Dense 混合检索）
+
+设计见 ADR-0004，模块落位见 architecture.md §3/§6。实现要点与版本勘察结论：
+
+**pymilvus 3.0.2（注意：已是大版本 3.x，API 以实测为准）**
+
+- 关键签名实测：`MilvusClient.hybrid_search(collection_name, reqs, ranker, limit, output_fields) -> List[List[dict]]`（命中为 dict，含 `entity`/`distance`）；`AnnSearchRequest(data, anns_field, param, limit, expr=...)`；`RRFRanker(k=60)`；`FunctionType.BM25` 存在。
+- Schema 构建：`MilvusClient.create_schema(auto_id=True, enable_dynamic_field=False)` 返回 `CollectionSchema`，`add_field(name, dtype, **kwargs)` / `add_function(Function)`；`prepare_index_params` 是 **classmethod**（实例上调用即可）。
+- BM25 稀疏向量完全由服务端生成：插入行**不含** sparse 字段，稀疏检索 `data=[query 原文]`；`enable_dynamic_field` 与 BM25 Function 同开有已知插入 bug（milvus#40581），故显式关闭 dynamic field。
+- 索引：dense → `AUTOINDEX`(COSINE)；sparse → 必须显式 `SPARSE_INVERTED_INDEX` + `metric_type="BM25"`（AUTOINDEX 不适用 BM25 稀疏字段）。
+- 中文分析器：`analyzer_params={"type": "chinese"}`（jieba 系）。**分析器与 dim 在建 collection 时固定**，切换需删库重建重灌。
+- `pymilvus` 仅允许 `app/services/kb_vector_store.py` import——`scripts/check-boundaries.mjs` 新增规则强制（AGENTS.md §2 同步更新）。
+
+**httpx 0.28.1（multipart 编码变更）**
+
+- `data=` 不再接受元组列表（`TypeError: sequence item 0: expected a bytes-like object`）。重复字段改用 **dict + 列表值**：`data={"languages": ["chi_sim", "eng"]}`，实测展开为两个同名 multipart part（PITFALLS 同日条目）。
+
+**FastAPI multipart**
+
+- `UploadFile` 路由要求 `python-multipart`，缺失在**路由注册（导入）期**抛 RuntimeError 而非请求期。已声明为直接依赖。
+
+**入库管线与降级策略**
+
+- `BackgroundTasks.add_task(sync_fn, ...)`：sync 回调由 Starlette 放线程池执行，不阻塞事件循环（SSE 聊天可并发进行）。
+- 上传落盘名 `{doc_id}__{filename}`（防同名覆盖），sha256 流式计算去重；reingest 先按 `doc_id` 删旧向量再插入，保证幂等。
+- 优雅降级：`CREO_KB_ENABLED=true` 但 `CREO_MILVUS_URI` / `CREO_UNSTRUCTURED_API_URL` / `CREO_KB_EMBEDDING_BASE_URL` 任一缺失，或 Milvus 连接失败 → KB 栈不注册（KB 端点 503、工具不注入），Agent 主链路不受影响。
+- 进程重启时 in-flight 文档停在 `processing`：用 `/knowledge` 页的重试按钮 reingest 恢复。
+- 前端挂载期 fetch 需遵守 eslint react-hooks 7.1 新规则 `set-state-in-effect`：setState 必须放在 promise 回调里（useAgent 用 zustand setter 所以从未触发过该规则）。
+
+---
+
 ## 2026-09-25（夜）
 
 ### .env 加载机制修正（provider 原生 key）

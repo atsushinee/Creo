@@ -4,6 +4,78 @@
 
 ---
 
+## [2026-09-29] httpx 0.28 的 multipart 不再接受 data= 元组列表
+
+### Problem
+
+Unstructured 客户端按 requests 时代的写法传 `data=[("strategy", ...), ("languages", "chi_sim"), ...]`，请求直接抛 `TypeError: sequence item 0: expected a bytes-like object, tuple found`。
+
+### Cause
+
+httpx 0.28 的 `data=` 只接受 dict；元组列表不再按 requests 语义展开为表单字段。
+
+### Solution
+
+重复字段用 dict + 列表值表达：`data={"languages": ["chi_sim", "eng"]}`，实测 httpx 会展开为两个同名 multipart part。
+
+### Lesson
+
+httpx 请求体编码参数的语义随大版本变化；multipart 行为以当前安装版本实测为准（AGENTS.md §12 的流程这次又救了一命——先 inspect 再写代码）。
+
+### Related
+
+backend/app/services/unstructured_client.py · backend/tests/test_kb_clients.py · docs/development/TECHNICAL-NOTES.md
+
+---
+
+## [2026-09-29] 同名 PDF 二次上传被拒时会删掉第一次的落盘文件
+
+### Problem
+
+同一 KB 内同名文件重复上传，sha256 去重按预期拒绝了请求，但第一次上传的原件文件被删除（登记行还在，路径悬空）。测试 `test_save_upload_writes_file_and_dedupes` 抓住。
+
+### Cause
+
+落盘路径只用了 `{kb_id}/files/{filename}`，同名文件共享同一路径；重复上传清理自己半成品时 `unlink` 的正是第一次上传的文件。
+
+### Solution
+
+落盘名改为 `{kb_id}/files/{doc_id}__{filename}`，每份上传路径唯一；测试补断言"重复上传被拒后原件仍存在"。
+
+### Lesson
+
+"内容去重"与"路径唯一"是正交的两件事：即使按 hash 拒绝重复，写盘路径也必须先做到互不覆盖。
+
+### Related
+
+backend/app/services/kb_service.py · backend/tests/test_kb_service.py
+
+---
+
+## [2026-09-29] UploadFile 路由缺 python-multipart 在导入期崩溃
+
+### Problem
+
+pytest 收集阶段整个 app 导入失败：`RuntimeError: Form data requires "python-multipart" to be installed`，连带所有既有 API 测试一起挂。
+
+### Cause
+
+FastAPI 的 multipart 支持是可选依赖；含 `UploadFile` 参数的路由在**注册（导入）时**就校验依赖，而不是等到第一个请求。
+
+### Solution
+
+`uv add python-multipart` 并声明为直接依赖。
+
+### Lesson
+
+FastAPI 的可选 I/O 依赖（multipart / orjson 等）按需显式声明；"能 import"不等于"路由能注册成功"。
+
+### Related
+
+backend/pyproject.toml · backend/app/api/routes/knowledge.py
+
+---
+
 ## [2026-09-25] 写在 .env 里的 provider 原生 key（OPENAI_API_KEY）不生效
 
 ### Problem

@@ -43,6 +43,28 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     log_level: str = "INFO"
 
+    # --- Knowledge base (ADR-0004; disabled unless enabled AND fully
+    #     configured — the lifespan skips the stack when endpoints are empty) ---
+    kb_enabled: bool = False
+    kb_data_dir: Path = BACKEND_ROOT / "data" / "kb"
+    milvus_uri: str = ""  # Zilliz Cloud endpoint or http://host:19530
+    milvus_token: str = ""  # Zilliz Cloud API key (empty for unauthenticated self-hosting)
+    unstructured_api_url: str = ""  # e.g. http://localhost:8000
+    unstructured_api_key: str = ""
+    unstructured_timeout: float = 600.0  # hi_res on large PDFs is slow
+    unstructured_strategy: str = "hi_res"  # auto | fast | hi_res | ocr_only
+    unstructured_languages: str = "chi_sim,eng"  # OCR languages, comma-separated
+    kb_embedding_base_url: str = ""  # OpenAI-compatible, e.g. https://api.siliconflow.cn/v1
+    kb_embedding_api_key: str = ""
+    kb_embedding_model: str = "BAAI/bge-m3"
+    kb_embedding_dim: int = 1024
+    # Analyzer is fixed at collection creation; 'chinese' is jieba-based.
+    # Changing model/dim/analyzer requires re-creating the collections.
+    kb_analyzer: str = "chinese"
+    kb_chunk_max_characters: int = 1500
+    kb_upload_max_mb: int = 50
+    kb_search_top_k: int = 5
+
     @property
     def model_display(self) -> str:
         return f"{self.model_provider}:{self.model_name}"
@@ -50,6 +72,14 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def unstructured_language_list(self) -> list[str]:
+        return [lang.strip() for lang in self.unstructured_languages.split(",") if lang.strip()]
+
+    @property
+    def kb_upload_max_bytes(self) -> int:
+        return self.kb_upload_max_mb * 1024 * 1024
 
 
 @lru_cache
