@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import * as pdfjs from "pdfjs-dist";
+
+import { pdfjs } from "@/lib/pdfjs";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
 interface ViewerPageProps {

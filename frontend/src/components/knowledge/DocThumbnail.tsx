@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import * as pdfjs from "pdfjs-dist";
+
+import { pdfjs } from "@/lib/pdfjs";
 
 /** Page-1 cover rendered client-side with pdf.js (no backend cost). */
 export function DocThumbnail({ url }: { url: string }) {
