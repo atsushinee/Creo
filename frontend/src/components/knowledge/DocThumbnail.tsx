@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { pdfjs } from "@/lib/pdfjs";
 
 /** Page-1 cover rendered client-side with pdf.js (no backend cost). */
-export function DocThumbnail({ url }: { url: string }) {
+export function DocThumbnail({ url, width = 240 }: { url: string; width?: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -21,22 +21,29 @@ export function DocThumbnail({ url }: { url: string }) {
           return;
         }
         const base = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: 240 / base.width });
+        const viewport = page.getViewport({ scale: width / base.width });
         canvas.width = viewport.width;
         canvas.height = viewport.height;
         await page.render({ canvas, viewport }).promise;
-      } catch {
-        // covers are best-effort; the card falls back to the plain background
+      } catch (coverError) {
+        // Covers are best-effort (e.g. dev StrictMode aborts the first mount);
+        // keep the placeholder and surface the reason for diagnosis.
+        if (!cancelled) {
+          console.warn("[DocThumbnail] cover render failed:", coverError);
+        }
       }
     })();
     return () => {
       cancelled = true;
       void loadingTask.destroy();
     };
-  }, [url]);
+  }, [url, width]);
 
   return (
-    <div className="flex h-32 items-center justify-center overflow-hidden rounded-md border-b border-border bg-white">
+    <div
+      className="flex items-center justify-center overflow-hidden rounded border bg-white"
+      style={{ width, height: Math.round(width * 1.414) }}
+    >
       <canvas ref={canvasRef} className="block" />
     </div>
   );

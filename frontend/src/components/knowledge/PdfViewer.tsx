@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronFirst, ChevronLast } from "lucide-react";
 
 import { pdfjs } from "@/lib/pdfjs";
 import type { PDFDocumentProxy } from "pdfjs-dist";
@@ -7,10 +8,11 @@ interface ViewerPageProps {
   doc: PDFDocumentProxy;
   pageNumber: number;
   width: number;
+  registerRef: (element: HTMLDivElement | null) => void;
 }
 
 /** One page, rendered lazily the first time it scrolls near the viewport. */
-function ViewerPage({ doc, pageNumber, width }: ViewerPageProps) {
+function ViewerPage({ doc, pageNumber, width, registerRef }: ViewerPageProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [rendered, setRendered] = useState(false);
@@ -57,8 +59,11 @@ function ViewerPage({ doc, pageNumber, width }: ViewerPageProps) {
       if (!cancelled) {
         setRendered(true);
       }
-    })().catch(() => {
-      // page rendering is best-effort; the placeholder stays
+    })().catch((renderError: unknown) => {
+      // Page rendering is best-effort; aborts are expected on doc switches.
+      if (!(renderError instanceof Error && renderError.name === "RenderingCancelledException")) {
+        console.warn(`[PdfViewer] page ${pageNumber} render failed:`, renderError);
+      }
     });
     return () => {
       cancelled = true;
@@ -66,7 +71,13 @@ function ViewerPage({ doc, pageNumber, width }: ViewerPageProps) {
   }, [visible, rendered, doc, pageNumber, width]);
 
   return (
-    <div ref={containerRef} className="mb-3">
+    <div
+      ref={(element) => {
+        containerRef.current = element;
+        registerRef(element);
+      }}
+      className="mb-3"
+    >
       <canvas
         ref={canvasRef}
         className={`mx-auto block w-full rounded-md border bg-white shadow-sm ${rendered ? "" : "hidden"}`}
@@ -83,23 +94,38 @@ function ViewerPage({ doc, pageNumber, width }: ViewerPageProps) {
   );
 }
 
+function isAbortLike(error: unknown): boolean {
+  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
+  return /abort/i.test(text) || error instanceof Error && error.name === "RenderingCancelledException";
+}
+
 /**
  * Continuous-scroll PDF viewer for the right column. Remount via key={docId}
  * when the document changes; pages render lazily as they approach the view.
+ * The header offers jump-to-page plus top/bottom shortcuts and tracks the
+ * page currently in view while scrolling.
  */
 export function PdfViewer({ url, title }: { url: string; title: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [width, setWidth] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
+  const numPages = doc?.numPages ?? 0;
 
   useEffect(() => {
     const loadingTask = pdfjs.getDocument({ url });
     loadingTask.promise
       .then((loaded) => setDoc(loaded))
-      .catch((loadError: unknown) =>
-        setError(loadError instanceof Error ? loadError.message : String(loadError)),
-      );
+      .catch((loadError: unknown) => {
+        // StrictMode double-mounts and doc switches abort the first load on
+        // purpose — that is not a failure the user should see.
+        if (!isAbortLike(loadError)) {
+          setError(loadError instanceof Error ? loadError.message : String(loadError));
+        }
+      });
     return () => {
       void loadingTask.destroy();
     };
@@ -115,17 +141,96 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
     return () => observer.disconnect();
   }, []);
 
+  const handleScroll = () => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+    const top = container.getBoundingClientRect().top;
+    let current = 1;
+    pageRefs.current.forEach((element, index) => {
+      if (element && element.getBoundingClientRect().top <= top + 48) {
+        current = index + 1;
+      }
+    });
+    setCurrentPage(current);
+    setPageInput(String(current));
+  };
+
+  const scrollToPage = (target: number) => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+    const clamped = Math.min(Math.max(1, target), Math.max(1, numPages));
+    const element = pageRefs.current[clamped - 1];
+    if (element) {
+      const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      container.scrollTo({ top: container.scrollTop + top - 8, behavior: "smooth" });
+    }
+    setPageInput(String(clamped));
+    setCurrentPage(clamped);
+  };
+
+  const jumpTo = (target: number) => scrollToPage(Math.round(target));
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
         <p className="min-w-0 flex-1 truncate text-[13px] font-medium" title={title}>
           {title}
         </p>
-        {doc && (
-          <span className="shrink-0 text-[11.5px] text-muted-foreground">{doc.numPages} pages</span>
-        )}
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            aria-label="Jump to first page"
+            title="Jump to first page"
+            disabled={!doc}
+            onClick={() => scrollToPage(1)}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronFirst className="size-4" />
+          </button>
+          <span className="min-w-12 text-center text-[11.5px] text-muted-foreground">
+            {currentPage} / {numPages || "?"}
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={numPages || 1}
+            value={pageInput}
+            disabled={!doc}
+            onChange={(event) => setPageInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                const target = Number(pageInput);
+                if (Number.isFinite(target)) {
+                  jumpTo(target);
+                }
+                event.currentTarget.blur();
+              }
+            }}
+            title="Type a page number and press Enter to jump"
+            className="w-14 rounded-md border bg-background px-1.5 py-1 text-center text-[12px] outline-none focus-visible:outline-2 focus-visible:outline-ring"
+            aria-label="Jump to page"
+          />
+          <button
+            type="button"
+            aria-label="Jump to last page"
+            title="Jump to last page"
+            disabled={!doc}
+            onClick={() => scrollToPage(numPages)}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLast className="size-4" />
+          </button>
+        </div>
       </div>
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="relative min-h-0 flex-1 overflow-y-auto p-4"
+      >
         {error && <p className="py-16 text-center text-[13px] text-error">{error}</p>}
         {!doc && !error && (
           <p className="py-16 text-center text-[13px] text-muted-foreground">Loading PDF…</p>
@@ -133,7 +238,15 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
         {doc && width > 0 && (
           <>
             {Array.from({ length: doc.numPages }, (_, index) => (
-              <ViewerPage key={index} doc={doc} pageNumber={index + 1} width={width} />
+              <ViewerPage
+                key={index}
+                doc={doc}
+                pageNumber={index + 1}
+                width={width}
+                registerRef={(element) => {
+                  pageRefs.current[index] = element;
+                }}
+              />
             ))}
           </>
         )}
