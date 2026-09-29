@@ -133,12 +133,21 @@ class AgentRuntime:
     def get_session_trace(self, session_id: str) -> list[dict[str, Any]]:
         return list(self._session_traces.get(session_id, ()))
 
+    def _record_trace(self, session_id: str, entry: dict[str, Any]) -> None:
+        try:
+            self._session_traces.setdefault(session_id, deque(maxlen=TRACE_MAX_ENTRIES)).append(
+                entry
+            )
+        except Exception:
+            logger.exception("failed to record trace entry (session=%s)", session_id)
+
     def _record_event(  # noqa: C901 — one branch per protocol event type
         self,
         session_id: str,
         event: AgentEvent,
         started: dict[str, float],
         char_counts: dict[str, int],
+        thinking_chars: dict[str, int],
     ) -> None:
         """Append one structural event to the session trace (deltas skipped).
 
@@ -155,17 +164,24 @@ class AgentRuntime:
                 entry["messageId"] = event.messageId
                 started[event.messageId] = perf_counter()
                 char_counts[event.messageId] = 0
+                thinking_chars["current"] = 0
             elif isinstance(event, MessageDelta):
                 char_counts[event.messageId] = (
                     char_counts.get(event.messageId, 0) + len(event.content)
                 )
                 return  # per-token deltas are noise in a trace view
+            elif isinstance(event, ThinkingDelta):
+                thinking_chars["current"] = thinking_chars.get("current", 0) + len(event.content)
+                return  # aggregated into the message_end entry below
             elif isinstance(event, MessageEnd):
                 entry["messageId"] = event.messageId
                 start = started.pop(event.messageId, None)
                 if start is not None:
                     entry["durationMs"] = int((perf_counter() - start) * 1000)
                 entry["chars"] = char_counts.pop(event.messageId, 0)
+                thinking = thinking_chars.pop("current", 0)
+                if thinking:
+                    entry["thinkingChars"] = thinking
             elif isinstance(event, ToolStart):
                 entry["toolCallId"] = event.toolCallId
                 entry["toolName"] = event.toolName
@@ -179,11 +195,9 @@ class AgentRuntime:
                 entry["result"] = result
             elif isinstance(event, ErrorEvent):
                 entry["message"] = event.message
-            else:  # ThinkingDelta and anything new: recorded as a bare stamp
+            else:
                 return
-            self._session_traces.setdefault(session_id, deque(maxlen=TRACE_MAX_ENTRIES)).append(
-                entry
-            )
+            self._record_trace(session_id, entry)
         except Exception:
             logger.exception("failed to record trace entry (session=%s)", session_id)
 
@@ -206,6 +220,20 @@ class AgentRuntime:
         converter = _EventConverter()
         started: dict[str, float] = {}
         char_counts: dict[str, int] = {}
+        thinking_chars: dict[str, int] = {"current": 0}
+
+        def record(entry: dict[str, Any]) -> None:
+            self._record_trace(session_id, entry)
+
+        record(
+            {
+                "ts": datetime.now(UTC).isoformat(timespec="milliseconds"),
+                "type": "user_message",
+                "message": message[:TRACE_RESULT_LIMIT],
+                "chars": len(message),
+                "scope": list(doc_scope) if doc_scope else None,
+            }
+        )
         yield RunStarted(runId=run_id)
         try:
             agent = self._scoped_agent(doc_scope) if doc_scope else self._ensure_agent()
@@ -217,18 +245,27 @@ class AgentRuntime:
                 subgraphs=True,
             ):
                 for event in converter.convert(mode, payload):
-                    self._record_event(session_id, event, started, char_counts)
+                    self._record_event(
+                        session_id, event, started, char_counts, thinking_chars
+                    )
                     yield event
         except Exception as exc:
             logger.exception("agent run failed (session=%s)", session_id)
             error = ErrorEvent(message=f"{type(exc).__name__}: {exc}")
-            self._record_event(session_id, error, started, char_counts)
+            self._record_event(session_id, error, started, char_counts, thinking_chars)
             yield error
         for event in converter.finish():
-            self._record_event(session_id, event, started, char_counts)
+            self._record_event(session_id, event, started, char_counts, thinking_chars)
             yield event
         run_finished = RunFinished(runId=run_id)
-        self._record_event(session_id, run_finished, started, char_counts)
+        self._record_trace(
+            session_id,
+            {
+                "ts": datetime.now(UTC).isoformat(timespec="milliseconds"),
+                "type": "run_finished",
+                "runId": run_id,
+            },
+        )
         yield run_finished
 
     async def get_history(

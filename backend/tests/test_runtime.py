@@ -68,6 +68,21 @@ async def test_full_tool_call_flow() -> None:
     assert isinstance(events[0], RunStarted)
     assert isinstance(events[-1], RunFinished)
 
+    # The session trace mirrors the structural events for the trace viewer.
+    trace = runtime.get_session_trace(SESSION)
+    trace_types = [entry["type"] for entry in trace]
+    assert trace_types[0] == "user_message"
+    assert "计算 123 * 456" in trace[0]["message"]
+    assert "tool_start" in trace_types and "tool_result" in trace_types
+    tool_entry = next(entry for entry in trace if entry["type"] == "tool_start")
+    assert tool_entry["toolName"] == "calculator"
+    assert tool_entry["args"] == {"expression": "123*456"}
+    result_entry = next(entry for entry in trace if entry["type"] == "tool_result")
+    assert result_entry["result"] == "56088"
+    message_end = next(entry for entry in trace if entry["type"] == "message_end")
+    assert message_end["durationMs"] >= 0 and message_end["chars"] > 0
+    assert trace_types[-1] == "run_finished"
+
 
 async def test_tool_error_is_reported_not_raised() -> None:
     runtime = make_runtime(

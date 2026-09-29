@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 
 import { Modal } from "@/components/ui/dialog";
 import { useI18n } from "@/hooks/useI18n";
+import type { TranslationKey } from "@/lib/i18n";
 import type { TraceEntry } from "@/types/agent";
 import { cn } from "@/lib/utils";
 
@@ -23,11 +24,26 @@ function entryTone(type: string): string {
   if (type === "error") {
     return "bg-error";
   }
+  if (type === "user_message") {
+    return "bg-warning";
+  }
   if (type.startsWith("run_")) {
     return "bg-primary";
   }
   return "bg-muted-foreground";
 }
+
+const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
+  user_message: "trace.typeUserMessage",
+  run_started: "trace.typeRunStarted",
+  run_finished: "trace.typeRunFinished",
+  message_start: "trace.typeMessageStart",
+  message_end: "trace.typeMessageEnd",
+  thinking_delta: "trace.typeThinkingDelta",
+  tool_start: "trace.typeToolStart",
+  tool_result: "trace.typeToolResult",
+  error: "trace.typeError",
+};
 
 /**
  * Session run trace (ADR-0004 Update 4): structural events with timestamps —
@@ -103,57 +119,76 @@ export function RunTraceDialog({ onClose, title, load }: RunTraceDialogProps) {
           <p className="py-6 text-center text-[12.5px] text-muted-foreground">{t("trace.empty")}</p>
         )}
         {!error && entries !== null && entries.length > 0 && (
-          <ol className="space-y-1">
-            {entries.map((entry, index) => (
-              <li key={`${entry.ts}-${index}`} className="flex items-start gap-2 text-[11.5px]">
-                <span
-                  className={cn("mt-1 size-1.5 shrink-0 rounded-full", entryTone(entry.type))}
-                />
-                <span className="w-16 shrink-0 text-muted-foreground">
-                  {new Date(entry.ts).toLocaleTimeString()}
-                </span>
-                <span className="w-24 shrink-0 font-medium">{entry.type}</span>
-                <div className="min-w-0 flex-1">
-                  {entry.toolName && (
-                    <span className="rounded bg-surface-raised px-1.5 py-0.5 text-[10.5px] font-medium">
-                      {entry.toolName}
-                    </span>
-                  )}
-                  {entry.durationMs !== undefined && (
-                    <span className="pl-1.5 text-muted-foreground">{entry.durationMs} ms</span>
-                  )}
-                  {entry.chars !== undefined && (
-                    <span className="pl-1.5 text-muted-foreground">{entry.chars} chars</span>
-                  )}
-                  {entry.isError && <span className="pl-1.5 text-error">{t("tool.failed")}</span>}
-                  {entry.message && (
-                    <p className="break-words text-error">{entry.message}</p>
-                  )}
-                  {(entry.args !== undefined || entry.result !== undefined) && (
-                    <details className="pt-0.5">
-                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                        {t("tool.arguments")} / {t("tool.result")}
-                      </summary>
-                      {entry.args !== undefined && (
-                        <pre className="mt-1 max-h-40 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
-                          {typeof entry.args === "string"
-                            ? entry.args
-                            : JSON.stringify(entry.args, null, 2)}
-                        </pre>
-                      )}
-                      {entry.result !== undefined && (
-                        <pre className="mt-1 max-h-40 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
-                          {typeof entry.result === "string"
-                            ? entry.result
-                            : JSON.stringify(entry.result, null, 2)}
-                        </pre>
-                      )}
-                    </details>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
+          <>
+            <p className="pb-1.5 text-[10.5px] text-muted-foreground">
+              {entries.some((entry) => entry.type === "tool_start")
+                ? ""
+                : t("trace.noToolCalls")}
+            </p>
+            <ol className="space-y-1">
+              {entries.map((entry, index) => (
+                <li key={`${entry.ts}-${index}`} className="flex items-start gap-2 text-[11.5px]">
+                  <span
+                    className={cn("mt-1 size-1.5 shrink-0 rounded-full", entryTone(entry.type))}
+                  />
+                  <span className="w-16 shrink-0 text-muted-foreground">
+                    {new Date(entry.ts).toLocaleTimeString()}
+                  </span>
+                  <span className="w-20 shrink-0 font-medium">
+                    {t(TYPE_LABEL_KEYS[entry.type] ?? "trace.typeMessageStart")}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    {entry.type === "user_message" && typeof entry.message === "string" && (
+                      <p className="break-words">{entry.message}</p>
+                    )}
+                    {entry.toolName && (
+                      <span className="rounded bg-surface-raised px-1.5 py-0.5 text-[10.5px] font-medium">
+                        {entry.toolName}
+                      </span>
+                    )}
+                    {entry.durationMs !== undefined && (
+                      <span className="pl-1.5 text-muted-foreground">{entry.durationMs} ms</span>
+                    )}
+                    {entry.chars !== undefined && (
+                      <span className="pl-1.5 text-muted-foreground">
+                        {t("trace.chars", { count: entry.chars })}
+                      </span>
+                    )}
+                    {entry.thinkingChars !== undefined && (
+                      <span className="pl-1.5 text-muted-foreground">
+                        {t("trace.thinkingChars", { count: entry.thinkingChars })}
+                      </span>
+                    )}
+                    {entry.isError && <span className="pl-1.5 text-error">{t("tool.failed")}</span>}
+                    {entry.message && entry.type === "error" && (
+                      <p className="break-words text-error">{entry.message}</p>
+                    )}
+                    {(entry.args !== undefined || entry.result !== undefined) && (
+                      <details className="pt-0.5">
+                        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                          {t("tool.arguments")} / {t("tool.result")}
+                        </summary>
+                        {entry.args !== undefined && (
+                          <pre className="mt-1 max-h-40 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
+                            {typeof entry.args === "string"
+                              ? entry.args
+                              : JSON.stringify(entry.args, null, 2)}
+                          </pre>
+                        )}
+                        {entry.result !== undefined && (
+                          <pre className="mt-1 max-h-40 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
+                            {typeof entry.result === "string"
+                              ? entry.result
+                              : JSON.stringify(entry.result, null, 2)}
+                          </pre>
+                        )}
+                      </details>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </>
         )}
       </div>
     </Modal>

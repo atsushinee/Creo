@@ -123,6 +123,7 @@ export interface TraceEntry {
   messageId?: string;
   durationMs?: number;
   chars?: number;
+  thinkingChars?: number;
   toolCallId?: string;
   toolName?: string;
   args?: unknown;
