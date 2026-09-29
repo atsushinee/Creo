@@ -17,7 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-async function readErrorDetail(response: Response): Promise<string> {
+export async function readErrorDetail(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as { detail?: string };
     return payload.detail ?? `Request failed (${response.status})`;
