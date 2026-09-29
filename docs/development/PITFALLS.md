@@ -4,6 +4,30 @@
 
 ---
 
+## [2026-09-30] 边界违规入库：只跑子集检查 + 管道 grep 吞掉脚本退出码
+
+### Problem
+
+`components/ui/dialog.tsx`（导入同层 `button.tsx`）违反"ui 层只依赖 @/lib/utils"的边界规则并被提交入库；复盘时发现当时提交前只运行了前端 tsc/eslint/vitest/build 子集，没有跑完整 pre-commit 脚本。后续验证时又用 `bash pre-commit-check.sh | grep …` 查看输出——管道返回 grep 的退出码，脚本失败被吞，带病提交差点再次发生。
+
+### Cause
+
+检查子集化：新增 ui 组件时没意识到 ui 层 import 规则会命中；bash 管道默认返回最后一个命令的退出码，`| grep` 让失败静默通过。
+
+### Solution
+
+1. 规则修订：ui 层允许导入 `@/components/ui/*` 同层原语（shadcn 式组合是合法意图，规则本意是禁止业务模块），正则放宽为 `@\/(?!lib\/utils|components\/ui)`；2. 流程修正：提交前完整运行 pre-commit 脚本且不接管道（或 `set -o pipefail`），以脚本自身退出码为准。
+
+### Lesson
+
+检查脚本的退出码就是契约——任何 `| grep`/`| head` 的"美化输出"都必须以 `pipefail` 或先落日志为前提；新增文件落在受规则约束的目录时，逐条核对目录级规则而不是依赖记忆。
+
+### Related
+
+scripts/check-boundaries.mjs · frontend/src/components/ui/dialog.tsx
+
+---
+
 ## [2026-09-30] 重启后"KB 消失"：两个叠加根因 + 测试数据泄漏进真实 SQLite
 
 ### Problem

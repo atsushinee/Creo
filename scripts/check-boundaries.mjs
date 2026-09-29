@@ -107,8 +107,8 @@ for (const file of walk(join(ROOT, "frontend", "src"))) {
   if (rel.includes("/components/ui/")) {
     checkLines(
       file,
-      /from\s+["']@(?!\/lib\/utils)/,
-      "components/ui must stay generic: import only from @/lib/utils",
+      /from\s+["']@\/(?!lib\/utils|components\/ui)/,
+      "components/ui must stay generic: import only from @/lib/utils and sibling components/ui primitives",
     );
   }
 }
