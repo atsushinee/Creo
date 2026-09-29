@@ -48,6 +48,12 @@ async def get_session_messages(
         raise HTTPException(status_code=503, detail="agent history unavailable") from exc
 
 
+@router.get("/sessions/{session_id}/trace")
+async def get_session_trace(session_id: str, runtime: RuntimeDep) -> list[dict]:
+    """Structural run events recorded for this session (tools, timings)."""
+    return runtime.get_session_trace(session_id)
+
+
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(session_id: str, sessions: SessionsDep) -> None:
     if not sessions.delete(session_id):

@@ -236,6 +236,26 @@ class MilvusVectorStore:
         )
         return [normalize_hit(hit) for hit in (results[0] if results else [])]
 
+    def query_chunks(self, name: str, doc_id: str, *, limit: int = 500) -> list[dict[str, Any]]:
+        """All indexed chunks of one document (parse-result viewer)."""
+        if not self.has_collection(name):
+            return []
+        rows = self.client.query(
+            collection_name=name,
+            filter=f'doc_id == "{doc_id}"',
+            output_fields=["text", "chunk_index", "page_number"],
+            limit=limit,
+            timeout=self._timeout,
+        )
+        return [
+            {
+                "text": str(row.get("text", "")),
+                "chunkIndex": int(row.get("chunk_index") or 0),
+                "page": int(row.get("page_number") or 0),
+            }
+            for row in rows
+        ]
+
     def search_sparse(
         self, name: str, query_text: str, *, top_k: int = 5, filter_expr: str = ""
     ) -> list[dict[str, Any]]:

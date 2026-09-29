@@ -20,15 +20,19 @@ from app.api.deps import (
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.knowledge import (
+    DocChunkOut,
     KbDocumentOut,
     KnowledgeBaseCreateRequest,
     KnowledgeBaseOut,
+    ParseElementOut,
+    ParseResultOut,
     PipelineEventOut,
     SearchTestRequest,
 )
 from app.services.ingestion_service import IngestionService
 from app.services.kb_search import KbSearchService
 from app.services.kb_service import DuplicateDocumentError, KnowledgeService, UploadTooLargeError
+from app.services.pipeline_cache import PipelineCache
 
 router = APIRouter(tags=["knowledge"])
 logger = get_logger("api.knowledge")
@@ -203,6 +207,60 @@ async def get_document_file(kb_id: str, doc_id: str, kb_service: KbDep) -> FileR
         filename=doc.filename,
         content_disposition_type="inline",
     )
+
+
+@router.get("/kb/{kb_id}/documents/{doc_id}/parse-result")
+async def get_document_parse_result(
+    kb_id: str, doc_id: str, kb_service: KbDep
+) -> ParseResultOut:
+    """The cached Unstructured parse result (elements), for the viewer UI."""
+    service = _require(kb_service)
+    kb = _require_kb(service, kb_id)
+    doc = service.get_document(doc_id)
+    if doc is None or doc.kbId != kb.id:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    settings = get_settings()
+    cache = PipelineCache(settings.kb_data_dir / "_cache")
+    elements = cache.load_parse(doc.sha256, settings.unstructured_profile)
+    if elements is None:
+        return ParseResultOut(available=False)
+    return ParseResultOut(
+        available=True,
+        source="cache",
+        profile=settings.unstructured_profile,
+        elements=[
+            ParseElementOut(
+                type=str(element.get("type") or ""),
+                text=str(element.get("text") or ""),
+                pageNumber=int((element.get("metadata") or {}).get("page_number") or 0),
+                tableHtml=(element.get("metadata") or {}).get("text_as_html"),
+            )
+            for element in elements
+        ],
+    )
+
+
+@router.get("/kb/{kb_id}/documents/{doc_id}/chunks")
+async def get_document_chunks(
+    kb_id: str,
+    doc_id: str,
+    kb_service: KbDep,
+    store: StoreDep,
+) -> list[DocChunkOut]:
+    """The indexed chunks of one document, straight from Milvus."""
+    service = _require(kb_service)
+    vector_store = _require(store)
+    kb = _require_kb(service, kb_id)
+    doc = service.get_document(doc_id)
+    if doc is None or doc.kbId != kb.id:
+        raise HTTPException(status_code=404, detail="document not found")
+    rows = vector_store.query_chunks(kb.collectionName, doc.id)
+    chunks = (
+        DocChunkOut(text=row["text"], chunkIndex=row["chunkIndex"], page=row["page"])
+        for row in rows
+    )
+    return sorted(chunks, key=lambda chunk: chunk.chunkIndex)
 
 
 @router.get("/kb/{kb_id}/documents/{doc_id}/trace")

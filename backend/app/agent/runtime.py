@@ -19,7 +19,10 @@ Stream shapes verified against deepagents 0.7.18 / langgraph 1.2.12
 """
 
 import json
+from collections import deque
 from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -41,6 +44,10 @@ from app.models.events import (
 )
 
 logger = get_logger("agent.runtime")
+
+TRACE_MAX_ENTRIES = 400
+TRACE_RESULT_LIMIT = 1500
+_SKIP_TRACE_TYPES = (MessageDelta, ThinkingDelta)
 
 
 def extract_text(content: Any) -> str:
@@ -101,6 +108,9 @@ class AgentRuntime:
         self._doc_agent_builder = doc_agent_builder
         self._agent: Any | None = None
         self._doc_agents: dict[tuple[str, str], Any] = {}
+        # Per-session run traces (structural events only; deltas are skipped
+        # and folded into message durations). In-memory by design.
+        self._session_traces: dict[str, deque[dict[str, Any]]] = {}
 
     @property
     def status(self) -> str:
@@ -120,6 +130,63 @@ class AgentRuntime:
             self._doc_agents[doc_scope] = self._doc_agent_builder(*doc_scope)()
         return self._doc_agents[doc_scope]
 
+    def get_session_trace(self, session_id: str) -> list[dict[str, Any]]:
+        return list(self._session_traces.get(session_id, ()))
+
+    def _record_event(  # noqa: C901 — one branch per protocol event type
+        self,
+        session_id: str,
+        event: AgentEvent,
+        started: dict[str, float],
+        char_counts: dict[str, int],
+    ) -> None:
+        """Append one structural event to the session trace (deltas skipped).
+
+        In-memory and best-effort: tracing must never break a run.
+        """
+        try:
+            entry: dict[str, Any] = {
+                "ts": datetime.now(UTC).isoformat(timespec="milliseconds"),
+                "type": event.type,
+            }
+            if isinstance(event, RunStarted | RunFinished):
+                entry["runId"] = event.runId
+            elif isinstance(event, MessageStart):
+                entry["messageId"] = event.messageId
+                started[event.messageId] = perf_counter()
+                char_counts[event.messageId] = 0
+            elif isinstance(event, MessageDelta):
+                char_counts[event.messageId] = (
+                    char_counts.get(event.messageId, 0) + len(event.content)
+                )
+                return  # per-token deltas are noise in a trace view
+            elif isinstance(event, MessageEnd):
+                entry["messageId"] = event.messageId
+                start = started.pop(event.messageId, None)
+                if start is not None:
+                    entry["durationMs"] = int((perf_counter() - start) * 1000)
+                entry["chars"] = char_counts.pop(event.messageId, 0)
+            elif isinstance(event, ToolStart):
+                entry["toolCallId"] = event.toolCallId
+                entry["toolName"] = event.toolName
+                entry["args"] = event.args
+            elif isinstance(event, ToolResult):
+                entry["toolCallId"] = event.toolCallId
+                entry["isError"] = event.isError
+                result = event.result
+                if isinstance(result, str) and len(result) > TRACE_RESULT_LIMIT:
+                    result = result[:TRACE_RESULT_LIMIT] + "…(truncated)"
+                entry["result"] = result
+            elif isinstance(event, ErrorEvent):
+                entry["message"] = event.message
+            else:  # ThinkingDelta and anything new: recorded as a bare stamp
+                return
+            self._session_traces.setdefault(session_id, deque(maxlen=TRACE_MAX_ENTRIES)).append(
+                entry
+            )
+        except Exception:
+            logger.exception("failed to record trace entry (session=%s)", session_id)
+
     async def stream_events(
         self,
         session_id: str,
@@ -132,10 +199,13 @@ class AgentRuntime:
         Any failure (model construction, provider error, tool node crash)
         surfaces as an `error` event; the stream always ends with
         `run_finished` unless the client disconnects. With `doc_scope` set,
-        the document-scoped graph is used (doc-chat mode).
+        the document-scoped graph is used (doc-chat mode). Structural events
+        are recorded into the per-session trace (skipping token deltas).
         """
         run_id = uuid4().hex
         converter = _EventConverter()
+        started: dict[str, float] = {}
+        char_counts: dict[str, int] = {}
         yield RunStarted(runId=run_id)
         try:
             agent = self._scoped_agent(doc_scope) if doc_scope else self._ensure_agent()
@@ -147,13 +217,19 @@ class AgentRuntime:
                 subgraphs=True,
             ):
                 for event in converter.convert(mode, payload):
+                    self._record_event(session_id, event, started, char_counts)
                     yield event
         except Exception as exc:
             logger.exception("agent run failed (session=%s)", session_id)
-            yield ErrorEvent(message=f"{type(exc).__name__}: {exc}")
+            error = ErrorEvent(message=f"{type(exc).__name__}: {exc}")
+            self._record_event(session_id, error, started, char_counts)
+            yield error
         for event in converter.finish():
+            self._record_event(session_id, event, started, char_counts)
             yield event
-        yield RunFinished(runId=run_id)
+        run_finished = RunFinished(runId=run_id)
+        self._record_event(session_id, run_finished, started, char_counts)
+        yield run_finished
 
     async def get_history(
         self, session_id: str, *, doc_scope: tuple[str, str] | None = None

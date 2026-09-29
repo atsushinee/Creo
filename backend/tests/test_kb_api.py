@@ -22,12 +22,19 @@ class RecordingVectorStore:
     def __init__(self) -> None:
         self.dropped: list[str] = []
         self.deleted: list[tuple[str, str]] = []
+        self.chunk_rows: list[dict] = []
 
     def drop_collection(self, name: str) -> None:
         self.dropped.append(name)
 
     def delete_doc(self, name: str, doc_id: str) -> None:
         self.deleted.append((name, doc_id))
+
+    def query_chunks(self, name: str, doc_id: str, *, limit: int = 500) -> list[dict]:
+        return [
+            {"text": "second", "chunkIndex": 1, "page": 2},
+            {"text": "first", "chunkIndex": 0, "page": 1},
+        ]
 
 
 def wire_knowledge_stack(client: TestClient, tmp_path) -> RecordingIngestion:
@@ -174,6 +181,60 @@ def test_search_test_endpoint(tmp_path) -> None:
         assert result.status_code == 200
         assert set(result.json()) == {"hybrid", "dense", "sparse"}
         assert searcher.last == {"query": "经营范围", "kb_id": kb["id"], "doc_id": "d1", "top_k": 3}
+
+
+def test_parse_result_and_chunks_endpoints(tmp_path) -> None:
+    from app.services.pipeline_cache import PipelineCache
+
+    with TestClient(create_app()) as client:
+        wire_knowledge_stack(client, tmp_path)
+        kb = client.post("/api/kb", json={"name": "docs"}).json()
+        doc = client.post(
+            f"/api/kb/{kb['id']}/documents",
+            files={"file": ("a.pdf", b"%PDF-1.4 test", "application/pdf")},
+        ).json()
+
+        # No cache entry yet → available=false (200, not 404).
+        empty = client.get(f"/api/kb/{kb['id']}/documents/{doc['id']}/parse-result")
+        assert empty.status_code == 200
+        assert empty.json()["available"] is False
+
+        # Seed the production parse cache with the document's sha256.
+        sha = client.app.state.knowledge_service.get_document(doc["id"]).sha256
+        cache = PipelineCache(tmp_path / "data" / "kb" / "_cache")
+        cache.save_parse(
+            sha,
+            "best",
+            [{"type": "Title", "text": "宇树科技", "metadata": {"page_number": 1}}],
+            "api",
+        )
+        seeded = client.get(f"/api/kb/{kb['id']}/documents/{doc['id']}/parse-result")
+        assert seeded.status_code == 200
+        body = seeded.json()
+        assert body["available"] is True and body["source"] == "cache"
+        assert body["elements"][0]["text"] == "宇树科技"
+
+        missing = client.get(f"/api/kb/{kb['id']}/documents/none/parse-result")
+        assert missing.status_code == 404
+
+
+def test_chunks_endpoint(tmp_path) -> None:
+    with TestClient(create_app()) as client:
+        wire_knowledge_stack(client, tmp_path)
+        kb = client.post("/api/kb", json={"name": "docs"}).json()
+        doc = client.post(
+            f"/api/kb/{kb['id']}/documents",
+            files={"file": ("a.pdf", b"%PDF-1.4 test", "application/pdf")},
+        ).json()
+
+        chunks = client.get(f"/api/kb/{kb['id']}/documents/{doc['id']}/chunks")
+        assert chunks.status_code == 200
+        rows = chunks.json()
+        assert [row["chunkIndex"] for row in rows] == [0, 1]  # sorted
+        assert rows[0]["text"] == "first"
+
+        missing = client.get(f"/api/kb/{kb['id']}/documents/none/chunks")
+        assert missing.status_code == 404
 
 
 def test_reingest_and_processing_guards(tmp_path) -> None:

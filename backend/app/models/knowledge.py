@@ -48,3 +48,23 @@ class SearchTestRequest(BaseModel):
     query: str = Field(min_length=1, max_length=512, examples=["公司的经营范围是什么"])
     top_k: int = Field(default=5, ge=1, le=20)
     doc_id: str | None = Field(default=None, max_length=64)
+
+
+class ParseElementOut(BaseModel):
+    type: str
+    text: str
+    pageNumber: int
+    tableHtml: str | None = None
+
+
+class ParseResultOut(BaseModel):
+    available: bool
+    source: str | None = None
+    profile: str | None = None
+    elements: list[ParseElementOut] = Field(default_factory=list)
+
+
+class DocChunkOut(BaseModel):
+    text: str
+    chunkIndex: int
+    page: int

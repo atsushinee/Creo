@@ -26,6 +26,7 @@ class StubRuntime:
         self._events = events or []
         self._history = history or []
         self.scoped_calls: list[tuple | None] = []
+        self.trace: list[dict] = [{"ts": "2026-09-30T00:00:00+00:00", "type": "run_started"}]
 
     async def stream_events(self, session_id: str, message: str, *, doc_scope=None):
         self.scoped_calls.append(doc_scope)
@@ -34,6 +35,9 @@ class StubRuntime:
 
     async def get_history(self, session_id: str, *, doc_scope=None):
         return self._history
+
+    def get_session_trace(self, session_id: str):
+        return self.trace
 
 
 def parse_sse(text: str) -> list[tuple[str, dict]]:
@@ -131,6 +135,15 @@ def test_error_event_reaches_client() -> None:
         response = client.post("/api/chat", json={"session_id": "s", "message": "hi"})
     frames = parse_sse(response.text)
     assert frames[1][1]["message"] == "boom"
+
+
+def test_session_trace_endpoint() -> None:
+    with TestClient(create_app()) as client:
+        client.app.state.agent_runtime = StubRuntime()
+        response = client.get("/api/sessions/sess-9/trace")
+        assert response.status_code == 200
+        body = response.json()
+        assert body[0]["type"] == "run_started"
 
 
 def test_session_messages_endpoint() -> None:

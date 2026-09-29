@@ -46,6 +46,12 @@ MVP（Agent 基础链路）稳定后，需要把本地 PDF 沉淀为可检索的
 2. **文档定向对话（doc-chat）**：`make_doc_agent_factory` 为每个 (kb_id, doc_id) 构建独立图实例（独立 checkpointer = 独立会话记忆），工具为 `search_document` 闭包（**doc_id 不暴露给模型**，检索在服务端强制 `doc_id ==` 过滤），系统提示词附加「仅回答该文档内的问题，越界明确拒答」。`ChatRequest` 增加 `kb_id`/`doc_id`；Runtime 按 scope 缓存已构建图。这是"软提示 + 硬过滤"双层约束：即使模型跑偏，检索范围也出不了这个文档。
 3. **召回测试**：`KbSearchService.debug_search` 暴露 hybrid / 仅 dense / 仅 sparse 三路结果（`MilvusVectorStore` 新增单通道 search），`POST /api/kb/{id}/search-test` + 独立 Recall Test 页面三列对比——这是评估融合质量（是否需要 Rerank）的观测工具；Rerank 模型本身仍属 RAG 深水区（暂不实现，留待观测结论驱动）。
 
+## Update 4（2026-09-30 深夜）：解析结果查看器 + 会话运行链路
+
+1. **解析结果查看**：`GET /api/kb/{id}/documents/{doc_id}/parse-result`（读 PipelineCache，available=false 表示尚无缓存而非 404）与 `GET .../chunks`（从 Milvus 按 doc_id 查询已入库分块）；前端卡片悬停新增"解析结果"按钮——按页分组浏览元素、关键字过滤、表格可展开 text_as_html。
+2. **会话运行链路**：`AgentRuntime` 内置按会话的运行记录器（结构化事件：run/消息起止（耗时、字符数）/工具调用全量入参与返回（截断 1500 字符）/错误；跳过逐 token 增量），环形缓冲 400 条，进程内存（重启即清——trace 是调试观测，不是审计账本）；`GET /api/sessions/{id}/trace` + 前端 RunTraceDialog（会话侧栏每行与文档对话头部入口，时间线 + 可展开参数/结果）。
+3. 决策依据：追踪走会话侧（对话行为与文档无关），入库追踪（pipeline_event）走文档侧，两者互补；运行记录选内存而非 SQLite——它是排障工具而非持久业务数据，避免给会话库引入写放大。
+
 ## Alternatives
 
 | 方案 | 不选原因 |
