@@ -8,6 +8,10 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128, examples=["3f9c2a6e-..."])
     message: str = Field(min_length=1, max_length=32_000, examples=["计算 123 * 456"])
+    # Document-chat scope (ADR-0004 Update 3): when both are set, the run is
+    # bound to a document-scoped agent whose retrieval is filtered to that doc.
+    kb_id: str | None = Field(default=None, max_length=64)
+    doc_id: str | None = Field(default=None, max_length=64)
 
 
 class ToolRecord(BaseModel):

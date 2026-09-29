@@ -68,9 +68,15 @@ def _tool_payload(content: Any) -> Any:
 class AgentRuntime:
     """Lazily builds the agent graph and exposes protocol-level operations."""
 
-    def __init__(self, agent_builder: Callable[[], Any]) -> None:
+    def __init__(
+        self,
+        agent_builder: Callable[[], Any],
+        doc_agent_builder: Callable[[str, str], Callable[[], Any]] | None = None,
+    ) -> None:
         self._agent_builder = agent_builder
+        self._doc_agent_builder = doc_agent_builder
         self._agent: Any | None = None
+        self._doc_agents: dict[tuple[str, str], Any] = {}
 
     @property
     def status(self) -> str:
@@ -82,18 +88,33 @@ class AgentRuntime:
             self._agent = self._agent_builder()
         return self._agent
 
-    async def stream_events(self, session_id: str, message: str) -> AsyncIterator[AgentEvent]:
+    def _scoped_agent(self, doc_scope: tuple[str, str]) -> Any:
+        """One graph (and memory) per (kb_id, doc_id) document-chat scope."""
+        if doc_scope not in self._doc_agents:
+            if self._doc_agent_builder is None:
+                raise RuntimeError("document chat is not configured")
+            self._doc_agents[doc_scope] = self._doc_agent_builder(*doc_scope)()
+        return self._doc_agents[doc_scope]
+
+    async def stream_events(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        doc_scope: tuple[str, str] | None = None,
+    ) -> AsyncIterator[AgentEvent]:
         """Run one agent turn and yield Creo Agent Events.
 
         Any failure (model construction, provider error, tool node crash)
         surfaces as an `error` event; the stream always ends with
-        `run_finished` unless the client disconnects.
+        `run_finished` unless the client disconnects. With `doc_scope` set,
+        the document-scoped graph is used (doc-chat mode).
         """
         run_id = uuid4().hex
         converter = _EventConverter()
         yield RunStarted(runId=run_id)
         try:
-            agent = self._ensure_agent()
+            agent = self._scoped_agent(doc_scope) if doc_scope else self._ensure_agent()
             config = {"configurable": {"thread_id": session_id}}
             async for _ns, mode, payload in agent.astream(
                 {"messages": [{"role": "user", "content": message}]},
@@ -110,9 +131,11 @@ class AgentRuntime:
             yield event
         yield RunFinished(runId=run_id)
 
-    async def get_history(self, session_id: str) -> list[HistoryMessage]:
+    async def get_history(
+        self, session_id: str, *, doc_scope: tuple[str, str] | None = None
+    ) -> list[HistoryMessage]:
         """Reconstruct protocol-neutral history from the checkpointer state."""
-        agent = self._ensure_agent()
+        agent = self._scoped_agent(doc_scope) if doc_scope else self._ensure_agent()
         snapshot = await agent.aget_state({"configurable": {"thread_id": session_id}})
         messages = (snapshot.values or {}).get("messages", []) if snapshot.values else []
         return messages_to_history(messages)

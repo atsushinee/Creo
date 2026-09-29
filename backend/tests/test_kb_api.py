@@ -148,6 +148,34 @@ def test_document_trace_and_file_endpoints(tmp_path) -> None:
         assert client.get(f"/api/kb/{kb['id']}/documents/none/file").status_code == 404
 
 
+def test_search_test_endpoint(tmp_path) -> None:
+    class FakeSearcher:
+        def debug_search(self, query, *, kb_id, doc_id=None, top_k=5):
+            self.last = {"query": query, "kb_id": kb_id, "doc_id": doc_id, "top_k": top_k}
+            return {
+                "hybrid": [{"text": "h", "score": 0.5}],
+                "dense": [{"text": "d", "score": 0.9}],
+                "sparse": [],
+            }
+
+    with TestClient(create_app()) as client:
+        wire_knowledge_stack(client, tmp_path)
+        searcher = FakeSearcher()
+        client.app.state.kb_search_service = searcher
+
+        missing = client.post("/api/kb/nope/search-test", json={"query": "q"})
+        assert missing.status_code == 404
+
+        kb = client.post("/api/kb", json={"name": "docs"}).json()
+        result = client.post(
+            f"/api/kb/{kb['id']}/search-test",
+            json={"query": "经营范围", "top_k": 3, "doc_id": "d1"},
+        )
+        assert result.status_code == 200
+        assert set(result.json()) == {"hybrid", "dense", "sparse"}
+        assert searcher.last == {"query": "经营范围", "kb_id": kb["id"], "doc_id": "d1", "top_k": 3}
+
+
 def test_reingest_and_processing_guards(tmp_path) -> None:
     with TestClient(create_app()) as client:
         wire_knowledge_stack(client, tmp_path)

@@ -205,3 +205,37 @@ class MilvusVectorStore:
             timeout=self._timeout,
         )
         return [normalize_hit(hit) for hit in (results[0] if results else [])]
+
+    def search_dense(
+        self, name: str, query_vector: list[float], *, top_k: int = 5, filter_expr: str = ""
+    ) -> list[dict[str, Any]]:
+        """Single-channel dense search (retrieval testing / debugging)."""
+        results = self._client.search(
+            collection_name=name,
+            data=[query_vector],
+            anns_field="dense",
+            limit=top_k,
+            filter=filter_expr,
+            output_fields=["text", "doc_id", "chunk_index", "page_number", "metadata"],
+            timeout=self._timeout,
+        )
+        return [normalize_hit(hit) for hit in (results[0] if results else [])]
+
+    def search_sparse(
+        self, name: str, query_text: str, *, top_k: int = 5, filter_expr: str = ""
+    ) -> list[dict[str, Any]]:
+        """Single-channel BM25 search over raw query text (retrieval testing)."""
+        results = self._client.search(
+            collection_name=name,
+            data=[query_text],
+            anns_field="sparse",
+            limit=top_k,
+            filter=filter_expr,
+            search_params={
+                "metric_type": "BM25",
+                "params": {"drop_ratio_search": SPARSE_DROP_RATIO},
+            },
+            output_fields=["text", "doc_id", "chunk_index", "page_number", "metadata"],
+            timeout=self._timeout,
+        )
+        return [normalize_hit(hit) for hit in (results[0] if results else [])]

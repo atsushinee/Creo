@@ -40,6 +40,12 @@ MVP（Agent 基础链路）稳定后，需要把本地 PDF 沉淀为可检索的
 3. **删除语义修正**：`delete_kb` 级联清理 document 与 pipeline_event 行（修复孤儿行）；前端 KB/文档删除均需确认。
 4. **PDF 预览**：`GET .../documents/{doc_id}/file` 内联返回原件，前端 pdf.js（pdfjs-dist 6）canvas 渲染 + 翻页。
 
+## Update 3（2026-09-30）：三栏知识库工作台 + 文档定向对话 + 召回测试
+
+1. **界面重构（参考 Dify 的知识库/召回测试形态）**：Knowledge 页改为三栏——左侧 KB 切换 + 文档卡片（pdf.js 客户端渲染第一页作封面，零后端依赖）；中栏定向对话；右栏连续滚动预览（IntersectionObserver 懒渲染页面，宽度自适应）。
+2. **文档定向对话（doc-chat）**：`make_doc_agent_factory` 为每个 (kb_id, doc_id) 构建独立图实例（独立 checkpointer = 独立会话记忆），工具为 `search_document` 闭包（**doc_id 不暴露给模型**，检索在服务端强制 `doc_id ==` 过滤），系统提示词附加「仅回答该文档内的问题，越界明确拒答」。`ChatRequest` 增加 `kb_id`/`doc_id`；Runtime 按 scope 缓存已构建图。这是"软提示 + 硬过滤"双层约束：即使模型跑偏，检索范围也出不了这个文档。
+3. **召回测试**：`KbSearchService.debug_search` 暴露 hybrid / 仅 dense / 仅 sparse 三路结果（`MilvusVectorStore` 新增单通道 search），`POST /api/kb/{id}/search-test` + 独立 Recall Test 页面三列对比——这是评估融合质量（是否需要 Rerank）的观测工具；Rerank 模型本身仍属 RAG 深水区（暂不实现，留待观测结论驱动）。
+
 ## Alternatives
 
 | 方案 | 不选原因 |

@@ -35,11 +35,14 @@ async def get_session_messages(
     session_id: str,
     runtime: RuntimeDep,
     sessions: SessionsDep,
+    kb_id: str | None = None,
+    doc_id: str | None = None,
 ) -> list[HistoryMessage]:
     if sessions.get(session_id) is None:
         raise HTTPException(status_code=404, detail="session not found")
+    doc_scope = (kb_id, doc_id) if kb_id and doc_id else None
     try:
-        return await runtime.get_history(session_id)
+        return await runtime.get_history(session_id, doc_scope=doc_scope)
     except Exception as exc:
         logger.warning("history unavailable for session=%s: %s", session_id, exc)
         raise HTTPException(status_code=503, detail="agent history unavailable") from exc

@@ -2,12 +2,13 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.agent.agent import make_agent_builder
+from app.agent.agent import make_agent_builder, make_doc_agent_factory
 from app.agent.runtime import AgentRuntime
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
@@ -20,9 +21,21 @@ from app.services.kb_vector_store import MilvusVectorStore
 from app.services.pipeline_cache import PipelineCache
 from app.services.session_service import InMemorySessionService
 from app.services.unstructured_client import UnstructuredClient
-from app.tools.knowledge_tools import make_kb_search_tool
+from app.tools.knowledge_tools import make_doc_search_tool, make_kb_search_tool
 
 logger = get_logger("main")
+
+
+def _doc_tool_factory(application: FastAPI) -> Any:
+    """Doc-chat tool factory; None when the KB stack is disabled."""
+
+    def factory(kb_id: str, doc_id: str) -> list:
+        searcher = getattr(application.state, "kb_search_service", None)
+        if searcher is None:
+            return []
+        return [make_doc_search_tool(searcher, kb_id=kb_id, doc_id=doc_id)]
+
+    return factory
 
 
 def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
@@ -108,7 +121,17 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             model_api_key=settings.model_api_key,
             model_base_url=settings.model_base_url,
             extra_tools=extra_tools,
-        )
+        ),
+        # Doc-chat: one scoped graph per (kb_id, doc_id), retrieval filtered
+        # to a single document (ADR-0004 Update 3).
+        doc_agent_builder=make_doc_agent_factory(
+            model_provider=settings.model_provider,
+            model_name=settings.model_name,
+            instructions=settings.agent_instructions,
+            model_api_key=settings.model_api_key,
+            model_base_url=settings.model_base_url,
+            doc_tool_factory=_doc_tool_factory(application),
+        ),
     )
     logger.info(
         "Creo backend ready (model=%s, kb=%s)",

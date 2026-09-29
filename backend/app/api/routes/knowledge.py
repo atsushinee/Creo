@@ -11,7 +11,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from app.api.deps import get_ingestion_service, get_knowledge_service, get_vector_store_service
+from app.api.deps import (
+    get_ingestion_service,
+    get_kb_search_service,
+    get_knowledge_service,
+    get_vector_store_service,
+)
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.knowledge import (
@@ -19,8 +24,10 @@ from app.models.knowledge import (
     KnowledgeBaseCreateRequest,
     KnowledgeBaseOut,
     PipelineEventOut,
+    SearchTestRequest,
 )
 from app.services.ingestion_service import IngestionService
+from app.services.kb_search import KbSearchService
 from app.services.kb_service import DuplicateDocumentError, KnowledgeService, UploadTooLargeError
 
 router = APIRouter(tags=["knowledge"])
@@ -87,6 +94,22 @@ async def create_kb(
 async def list_kbs(kb_service: KbDep) -> list[KnowledgeBaseOut]:
     service = _require(kb_service)
     return [_kb_out(service, kb) for kb in service.list_kbs()]
+
+
+@router.post("/kb/{kb_id}/search-test")
+async def search_test(
+    kb_id: str,
+    request: SearchTestRequest,
+    kb_service: KbDep,
+    search: Annotated[KbSearchService | None, Depends(get_kb_search_service)],
+) -> dict:
+    """Hybrid vs dense-only vs sparse-only comparison (retrieval testing)."""
+    service = _require(kb_service)
+    searcher = _require(search)
+    _require_kb(service, kb_id)
+    return searcher.debug_search(
+        request.query, kb_id=kb_id, doc_id=request.doc_id, top_k=request.top_k
+    )
 
 
 @router.delete("/kb/{kb_id}", status_code=204)

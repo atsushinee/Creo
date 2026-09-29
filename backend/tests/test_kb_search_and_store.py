@@ -109,13 +109,27 @@ class FakeVector:
     def __init__(self, existing: set[str], results: dict[str, list[dict]]):
         self._existing = existing
         self._results = results
-        self.calls: list[str] = []
+        self.calls: list[dict] = []
 
     def has_collection(self, name: str) -> bool:
         return name in self._existing
 
-    def hybrid_search(self, name: str, query_text: str, query_vector: list, *, top_k: int = 5):
-        self.calls.append(name)
+    def hybrid_search(
+        self,
+        name: str,
+        query_text: str,
+        query_vector: list,
+        *,
+        top_k: int = 5,
+        filter_expr: str = "",
+    ):
+        self.calls.append({"collection": name, "filter": filter_expr})
+        return self._results.get(name, [])
+
+    def search_dense(self, name: str, query_vector: list, *, top_k: int = 5, filter_expr: str = ""):
+        return self._results.get(name, [])
+
+    def search_sparse(self, name: str, query_text: str, *, top_k: int = 5, filter_expr: str = ""):
         return self._results.get(name, [])
 
 
@@ -145,9 +159,29 @@ def test_search_tags_kb_info_and_merges() -> None:
     service = make_search_service([kb_a, kb_b], existing={"col_a", "col_b"}, results=results)
     hits = service.search("query", top_k=2)
 
-    assert service._vector.calls == ["col_a", "col_b"]
+    assert [call["collection"] for call in service._vector.calls] == ["col_a", "col_b"]
     assert [h["text"] for h in hits] == ["A1", "B1"]
     assert hits[0]["kbId"] == "a" and hits[0]["kbName"] == "a"
+
+
+def test_search_with_doc_scope_applies_filter() -> None:
+    kb_a = make_kb("a", "col_a")
+    service = make_search_service([kb_a], existing={"col_a"}, results={"col_a": []})
+    service.search("query", kb_id="a", doc_id="doc-9", top_k=3)
+    assert service._vector.calls[0]["filter"] == 'doc_id == "doc-9"'
+    service.search("query", kb_id="a", top_k=3)
+    assert service._vector.calls[1]["filter"] == ""
+
+
+def test_debug_search_returns_three_channels() -> None:
+    kb_a = make_kb("a", "col_a")
+    results = {"col_a": [{"text": "H", "docId": "d1", "chunkIndex": 0}]}
+    service = make_search_service([kb_a], existing={"col_a"}, results=results)
+    out = service.debug_search("query", kb_id="a", top_k=2)
+
+    assert set(out) == {"hybrid", "dense", "sparse"}
+    assert out["hybrid"][0]["kbId"] == "a"
+    assert all(len(channel) == 1 for channel in out.values())
 
 
 def test_search_single_kb_not_found() -> None:

@@ -25,12 +25,14 @@ class StubRuntime:
     def __init__(self, events=None, history=None) -> None:
         self._events = events or []
         self._history = history or []
+        self.scoped_calls: list[tuple | None] = []
 
-    async def stream_events(self, session_id: str, message: str):
+    async def stream_events(self, session_id: str, message: str, *, doc_scope=None):
+        self.scoped_calls.append(doc_scope)
         for event in self._events:
             yield event
 
-    async def get_history(self, session_id: str):
+    async def get_history(self, session_id: str, *, doc_scope=None):
         return self._history
 
 
@@ -97,14 +99,27 @@ def test_chat_validation_error() -> None:
 
 def test_chat_registers_session_with_derived_title() -> None:
     with TestClient(create_app()) as client:
-        client.app.state.agent_runtime = StubRuntime(
-            events=[RunStarted(runId="r"), RunFinished(runId="r")]
-        )
+        stub = StubRuntime(events=[RunStarted(runId="r"), RunFinished(runId="r")])
+        client.app.state.agent_runtime = stub
         client.post("/api/chat", json={"session_id": "sess-1", "message": "帮我计算 123 * 456"})
         listing = client.get("/api/sessions").json()
     assert len(listing) == 1
     assert listing[0]["id"] == "sess-1"
     assert listing[0]["title"] == "帮我计算 123 * 456"
+    assert stub.scoped_calls[-1] is None  # plain chat: no document scope
+
+
+def test_chat_document_scope_reaches_runtime() -> None:
+    with TestClient(create_app()) as client:
+        stub = StubRuntime(events=[RunStarted(runId="r"), RunFinished(runId="r")])
+        client.app.state.agent_runtime = stub
+        response = client.post(
+            "/api/chat",
+            json={"session_id": "s-doc", "message": "总结这份文件", "kb_id": "kb1", "doc_id": "d1"},
+        )
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+    assert stub.scoped_calls[-1] == ("kb1", "d1")
 
 
 def test_error_event_reaches_client() -> None:
