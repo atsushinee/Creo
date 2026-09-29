@@ -3,11 +3,13 @@ import { useCallback, useEffect } from "react";
 import {
   deleteSession as deleteSessionApi,
   getSessionMessages,
+  getSessionTrace,
   listSessions,
   streamChat,
 } from "@/services/agentApi";
 import { deriveTitle, historyToMessages, useAgentStore } from "@/stores/agentStore";
 import { isAbortError, useSse } from "@/hooks/useSSE";
+import type { TraceEntry } from "@/types/agent";
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -144,6 +146,10 @@ export function useAgent() {
     newChat();
   }, [newChat, setError]);
 
+  const loadSessionTrace = useCallback((sessionId: string): Promise<TraceEntry[]> => {
+    return getSessionTrace(sessionId);
+  }, []);
+
   const currentMessages = currentSessionId ? (messagesBySession[currentSessionId] ?? []) : [];
   const isBusy = streamingSessionId !== null;
 
@@ -160,6 +166,7 @@ export function useAgent() {
     startNewChat,
     deleteSession,
     stop,
+    loadSessionTrace,
     dismissError: () => setError(null),
   };
 }

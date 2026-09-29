@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getSessionMessages, streamChat } from "@/services/agentApi";
+import { getSessionMessages, getSessionTrace, streamChat } from "@/services/agentApi";
 import { historyToMessages } from "@/stores/agentStore";
 import { isAbortError, useSse } from "@/hooks/useSSE";
-import type { AgentEvent, ChatMessage } from "@/types/agent";
+import type { AgentEvent, ChatMessage, TraceEntry } from "@/types/agent";
 import type { KbDocumentInfo } from "@/types/knowledgeBase";
 
 function errorMessage(error: unknown): string {
@@ -73,6 +73,7 @@ export interface DocChat {
   error: string | null;
   sendMessage: (text: string) => void;
   stop: () => void;
+  loadRunTrace: () => Promise<TraceEntry[]>;
   dismissError: () => void;
 }
 
@@ -176,6 +177,10 @@ export function useDocChat(kbId: string | null, doc: KbDocumentInfo | null): Doc
     [doc, kbId, isStreaming, run, sessionId],
   );
 
+  const loadRunTrace = useCallback((): Promise<TraceEntry[]> => {
+    return getSessionTrace(sessionId);
+  }, [sessionId]);
+
   return {
     messages,
     isStreaming,
@@ -183,6 +188,7 @@ export function useDocChat(kbId: string | null, doc: KbDocumentInfo | null): Doc
     error,
     sendMessage,
     stop,
+    loadRunTrace,
     dismissError: () => setError(null),
   };
 }

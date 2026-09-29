@@ -4,7 +4,7 @@
  */
 
 import { createSseParser } from "@/lib/sse";
-import type { AgentEvent, HistoryMessage, SessionInfo } from "@/types/agent";
+import type { AgentEvent, HistoryMessage, SessionInfo, TraceEntry } from "@/types/agent";
 
 const API_BASE = "/api";
 
@@ -106,6 +106,17 @@ export async function getSessionMessages(
     throw new ApiError(await readErrorDetail(response), response.status);
   }
   return (await response.json()) as HistoryMessage[];
+}
+
+/** Structural run events recorded for this session (ADR-0004 Update 4). */
+export async function getSessionTrace(sessionId: string): Promise<TraceEntry[]> {
+  const response = await fetch(
+    `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/trace`,
+  );
+  if (!response.ok) {
+    throw new ApiError(await readErrorDetail(response), response.status);
+  }
+  return (await response.json()) as TraceEntry[];
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {

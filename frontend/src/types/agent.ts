@@ -114,3 +114,19 @@ export interface HistoryMessage {
   content: string;
   tools: HistoryToolRecord[];
 }
+
+/** One structural entry of the per-session run trace (ADR-0004 Update 4). */
+export interface TraceEntry {
+  ts: string;
+  type: string;
+  runId?: string;
+  messageId?: string;
+  durationMs?: number;
+  chars?: number;
+  toolCallId?: string;
+  toolName?: string;
+  args?: unknown;
+  result?: unknown;
+  isError?: boolean;
+  message?: string;
+}

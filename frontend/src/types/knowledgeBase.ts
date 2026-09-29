@@ -52,3 +52,23 @@ export interface RecallTestResult {
   dense: RecallHit[];
   sparse: RecallHit[];
 }
+
+export interface ParseElementInfo {
+  type: string;
+  text: string;
+  pageNumber: number;
+  tableHtml: string | null;
+}
+
+export interface ParseResultInfo {
+  available: boolean;
+  source: string | null;
+  profile: string | null;
+  elements: ParseElementInfo[];
+}
+
+export interface DocChunkInfo {
+  text: string;
+  chunkIndex: number;
+  page: number;
+}

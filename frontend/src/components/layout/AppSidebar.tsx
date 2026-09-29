@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { History, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/hooks/useI18n";
@@ -11,9 +11,17 @@ interface AppSidebarProps {
   onSelect: (sessionId: string) => void;
   onNewChat: () => void;
   onDelete: (sessionId: string) => void;
+  onTrace: (sessionId: string) => void;
 }
 
-export function AppSidebar({ sessions, currentSessionId, onSelect, onNewChat, onDelete }: AppSidebarProps) {
+export function AppSidebar({
+  sessions,
+  currentSessionId,
+  onSelect,
+  onNewChat,
+  onDelete,
+  onTrace,
+}: AppSidebarProps) {
   const { t } = useI18n();
 
   return (
@@ -38,7 +46,7 @@ export function AppSidebar({ sessions, currentSessionId, onSelect, onNewChat, on
                     type="button"
                     onClick={() => onSelect(session.id)}
                     className={cn(
-                      "w-full cursor-pointer truncate rounded-md px-2.5 py-1.5 pr-8 text-left text-[13px] transition-colors",
+                      "w-full cursor-pointer truncate rounded-md px-2.5 py-1.5 pr-14 text-left text-[13px] transition-colors",
                       session.id === currentSessionId
                         ? "bg-surface-raised font-medium text-foreground"
                         : "text-muted-foreground hover:bg-surface-raised/60 hover:text-foreground",
@@ -47,15 +55,25 @@ export function AppSidebar({ sessions, currentSessionId, onSelect, onNewChat, on
                   >
                     {session.title}
                   </button>
-                  <Button
-                    variant="danger-ghost"
-                    size="icon-sm"
-                    className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100"
-                    aria-label={`${t("sidebar.delete")}: ${session.title}`}
-                    onClick={() => onDelete(session.id)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
+                  <span className="absolute top-1/2 right-1 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${t("trace.title")}: ${session.title}`}
+                      title={t("trace.title")}
+                      onClick={() => onTrace(session.id)}
+                    >
+                      <History className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="danger-ghost"
+                      size="icon-sm"
+                      aria-label={`${t("sidebar.delete")}: ${session.title}`}
+                      onClick={() => onDelete(session.id)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </span>
                 </li>
               ))}
             </ul>

@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import * as kbApi from "@/services/kbApi";
-import type {
-  KbDocumentInfo,
-  KnowledgeBaseInfo,
-  PipelineEventInfo,
-} from "@/types/knowledgeBase";
+import type { KbDocumentInfo, KnowledgeBaseInfo, PipelineEventInfo } from "@/types/knowledgeBase";
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -183,6 +179,16 @@ export function useKnowledgeBase() {
     [],
   );
 
+  const fetchParseResult = useCallback(
+    (kbId: string, docId: string) => kbApi.getParseResult(kbId, docId),
+    [],
+  );
+
+  const fetchDocChunks = useCallback(
+    (kbId: string, docId: string) => kbApi.getDocChunks(kbId, docId),
+    [],
+  );
+
   const currentKb = knowledgeBases.find((kb) => kb.id === currentKbId) ?? null;
 
   return {
@@ -201,6 +207,8 @@ export function useKnowledgeBase() {
     reingestDocument,
     loadTrace,
     documentFileUrl,
+    fetchParseResult,
+    fetchDocChunks,
     dismissError: () => setError(null),
   };
 }

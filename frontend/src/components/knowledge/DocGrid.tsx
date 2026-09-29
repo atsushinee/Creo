@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { History, RotateCcw, Trash2 } from "lucide-react";
+import { FileSearch, History, RotateCcw, Trash2 } from "lucide-react";
 
 import { DocThumbnail } from "@/components/knowledge/DocThumbnail";
 import { ConfirmDialog } from "@/components/ui/dialog";
@@ -17,6 +17,7 @@ interface DocGridProps {
   onDeleteDoc: (docId: string) => void;
   onReingest: (docId: string) => void;
   onLoadTrace: (docId: string) => void;
+  onShowParse: (doc: KbDocumentInfo) => void;
 }
 
 const statusDot: Record<string, string> = {
@@ -47,6 +48,7 @@ export function DocGrid({
   onDeleteDoc,
   onReingest,
   onLoadTrace,
+  onShowParse,
 }: DocGridProps) {
   const [traceDocId, setTraceDocId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<KbDocumentInfo | null>(null);
@@ -91,6 +93,18 @@ export function DocGrid({
             />
 
             <div className="absolute top-1 right-1 flex items-center gap-0.5 rounded-md bg-black/55 p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+              <button
+                type="button"
+                aria-label={t("parse.title")}
+                title={t("parse.title")}
+                className="flex size-6 cursor-pointer items-center justify-center rounded text-white transition-colors hover:bg-white/20"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onShowParse(doc);
+                }}
+              >
+                <FileSearch className="size-3.5" />
+              </button>
               <button
                 type="button"
                 aria-label={t("doc.trace")}

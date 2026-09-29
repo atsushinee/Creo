@@ -3,6 +3,7 @@ import { Plus, Trash2, Upload } from "lucide-react";
 
 import { DocChatPanel } from "@/components/knowledge/DocChatPanel";
 import { DocGrid } from "@/components/knowledge/DocGrid";
+import { ParseResultDialog } from "@/components/knowledge/ParseResultDialog";
 import { PdfViewer } from "@/components/knowledge/PdfViewer";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { ErrorBanner } from "@/components/chat/ErrorBanner";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBase";
-import type { KnowledgeBaseInfo } from "@/types/knowledgeBase";
+import type { KbDocumentInfo, KnowledgeBaseInfo } from "@/types/knowledgeBase";
 
 /**
  * Dify-style three-column knowledge workspace:
@@ -26,6 +27,7 @@ export default function KnowledgePage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [creatingKb, setCreatingKb] = useState(false);
   const [pendingDeleteKb, setPendingDeleteKb] = useState<KnowledgeBaseInfo | null>(null);
+  const [parseDoc, setParseDoc] = useState<KbDocumentInfo | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const currentKb = kb.currentKb;
   const selectedDoc = kb.documents.find((doc) => doc.id === selectedDocId) ?? null;
@@ -122,6 +124,7 @@ export default function KnowledgePage() {
                 onDeleteDoc={(docId) => void kb.deleteDocument(currentKb.id, docId)}
                 onReingest={(docId) => void kb.reingestDocument(currentKb.id, docId)}
                 onLoadTrace={(docId) => void kb.loadTrace(currentKb.id, docId)}
+                onShowParse={(doc) => setParseDoc(doc)}
               />
             )}
           </div>
@@ -168,6 +171,13 @@ export default function KnowledgePage() {
             void kb.createKb(name, "");
           }}
           onCancel={() => setCreatingKb(false)}
+        />
+      )}
+      {parseDoc && currentKb && (
+        <ParseResultDialog
+          title={`${t("parse.title")} · ${parseDoc.filename}`}
+          load={() => kb.fetchParseResult(currentKb.id, parseDoc.id)}
+          onClose={() => setParseDoc(null)}
         />
       )}
       <ConfirmDialog

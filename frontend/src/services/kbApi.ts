@@ -5,8 +5,10 @@
 
 import { ApiError, readErrorDetail } from "@/services/agentApi";
 import type {
+  DocChunkInfo,
   KbDocumentInfo,
   KnowledgeBaseInfo,
+  ParseResultInfo,
   PipelineEventInfo,
   RecallTestResult,
 } from "@/types/knowledgeBase";
@@ -83,6 +85,14 @@ export function documentFileUrl(kbId: string, docId: string): string {
 
 export async function getDocumentTrace(kbId: string, docId: string): Promise<PipelineEventInfo[]> {
   return parseBody(await fetch(kbUrl(kbId, `/documents/${encodeURIComponent(docId)}/trace`)));
+}
+
+export async function getParseResult(kbId: string, docId: string): Promise<ParseResultInfo> {
+  return parseBody(await fetch(kbUrl(kbId, `/documents/${encodeURIComponent(docId)}/parse-result`)));
+}
+
+export async function getDocChunks(kbId: string, docId: string): Promise<DocChunkInfo[]> {
+  return parseBody(await fetch(kbUrl(kbId, `/documents/${encodeURIComponent(docId)}/chunks`)));
 }
 
 export interface RecallTestInput {
