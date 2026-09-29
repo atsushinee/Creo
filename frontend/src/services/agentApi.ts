@@ -31,6 +31,8 @@ export interface StreamChatOptions {
   message: string;
   onEvent: (event: AgentEvent) => void;
   signal?: AbortSignal;
+  /** Document-chat scope: binds the run to a doc-scoped agent (ADR-0004). */
+  docScope?: { kbId: string; docId: string };
 }
 
 /**
@@ -41,7 +43,12 @@ export async function streamChat(options: StreamChatOptions): Promise<void> {
   const response = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ session_id: options.sessionId, message: options.message }),
+    body: JSON.stringify({
+      session_id: options.sessionId,
+      message: options.message,
+      kb_id: options.docScope?.kbId ?? null,
+      doc_id: options.docScope?.docId ?? null,
+    }),
     signal: options.signal,
   });
 
@@ -85,8 +92,16 @@ export async function listSessions(): Promise<SessionInfo[]> {
   return (await response.json()) as SessionInfo[];
 }
 
-export async function getSessionMessages(sessionId: string): Promise<HistoryMessage[]> {
-  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/messages`);
+export async function getSessionMessages(
+  sessionId: string,
+  scope?: { kbId: string; docId: string },
+): Promise<HistoryMessage[]> {
+  const query = scope
+    ? `?kb_id=${encodeURIComponent(scope.kbId)}&doc_id=${encodeURIComponent(scope.docId)}`
+    : "";
+  const response = await fetch(
+    `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/messages${query}`,
+  );
   if (!response.ok) {
     throw new ApiError(await readErrorDetail(response), response.status);
   }

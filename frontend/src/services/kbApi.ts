@@ -4,7 +4,12 @@
  */
 
 import { ApiError, readErrorDetail } from "@/services/agentApi";
-import type { KbDocumentInfo, KnowledgeBaseInfo, PipelineEventInfo } from "@/types/knowledgeBase";
+import type {
+  KbDocumentInfo,
+  KnowledgeBaseInfo,
+  PipelineEventInfo,
+  RecallTestResult,
+} from "@/types/knowledgeBase";
 
 const API_BASE = "/api";
 
@@ -78,4 +83,23 @@ export function documentFileUrl(kbId: string, docId: string): string {
 
 export async function getDocumentTrace(kbId: string, docId: string): Promise<PipelineEventInfo[]> {
   return parseBody(await fetch(kbUrl(kbId, `/documents/${encodeURIComponent(docId)}/trace`)));
+}
+
+export interface RecallTestInput {
+  query: string;
+  top_k: number;
+  doc_id?: string | null;
+}
+
+export async function retrievalTest(
+  kbId: string,
+  input: RecallTestInput,
+): Promise<RecallTestResult> {
+  return parseBody(
+    await fetch(kbUrl(kbId, "/search-test"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
 }

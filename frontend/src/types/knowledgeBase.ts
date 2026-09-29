@@ -35,3 +35,20 @@ export interface PipelineEventInfo {
   durationMs: number | null;
   createdAt: string;
 }
+
+export interface RecallHit {
+  text: string;
+  docId: string;
+  chunkIndex: number;
+  page: number;
+  metadata: Record<string, unknown> | null;
+  score: number;
+  kbId?: string;
+  kbName?: string;
+}
+
+export interface RecallTestResult {
+  hybrid: RecallHit[];
+  dense: RecallHit[];
+  sparse: RecallHit[];
+}

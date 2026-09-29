@@ -27,6 +27,9 @@ export function AppHeader({ theme, onToggleTheme }: { theme: Theme; onToggleThem
           <NavLink to="/knowledge" className={linkClass}>
             Knowledge
           </NavLink>
+          <NavLink to="/knowledge/recall" className={linkClass}>
+            Recall test
+          </NavLink>
         </nav>
       </div>
       <ThemeToggle theme={theme} onToggle={onToggleTheme} />
