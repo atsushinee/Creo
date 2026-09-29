@@ -6,9 +6,11 @@ import { DocGrid } from "@/components/knowledge/DocGrid";
 import { PdfViewer } from "@/components/knowledge/PdfViewer";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { ErrorBanner } from "@/components/chat/ErrorBanner";
 import { useTheme } from "@/hooks/useTheme";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBase";
+import type { KnowledgeBaseInfo } from "@/types/knowledgeBase";
 
 /**
  * Dify-style three-column knowledge workspace:
@@ -20,30 +22,11 @@ export default function KnowledgePage() {
   const { theme, toggleTheme } = useTheme();
   const kb = useKnowledgeBase();
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [creatingKb, setCreatingKb] = useState(false);
+  const [pendingDeleteKb, setPendingDeleteKb] = useState<KnowledgeBaseInfo | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const currentKb = kb.currentKb;
   const selectedDoc = kb.documents.find((doc) => doc.id === selectedDocId) ?? null;
-
-  const createKb = () => {
-    const name = window.prompt("Knowledge base name");
-    if (name && name.trim()) {
-      void kb.createKb(name.trim(), "");
-    }
-  };
-
-  const deleteKb = () => {
-    if (!currentKb) {
-      return;
-    }
-    if (
-      window.confirm(
-        `Delete knowledge base "${currentKb.name}" and all of its documents? This cannot be undone.`,
-      )
-    ) {
-      setSelectedDocId(null);
-      void kb.deleteKb(currentKb.id);
-    }
-  };
 
   const uploadFiles = async (files: FileList | null) => {
     if (!currentKb || !files) {
@@ -79,7 +62,7 @@ export default function KnowledgePage() {
                   </option>
                 ))}
               </select>
-              <Button variant="outline" size="icon-sm" aria-label="New knowledge base" onClick={createKb}>
+              <Button variant="outline" size="icon-sm" aria-label="New knowledge base" onClick={() => setCreatingKb(true)}>
                 <Plus className="size-3.5" />
               </Button>
               <Button
@@ -87,7 +70,7 @@ export default function KnowledgePage() {
                 size="icon-sm"
                 aria-label="Delete knowledge base"
                 disabled={!currentKb}
-                onClick={deleteKb}
+                onClick={() => setPendingDeleteKb(currentKb)}
               >
                 <Trash2 className="size-3.5" />
               </Button>
@@ -164,6 +147,34 @@ export default function KnowledgePage() {
           )}
         </aside>
       </div>
+
+      {creatingKb && (
+        <PromptDialog
+          title="New knowledge base"
+          placeholder="Knowledge base name"
+          confirmLabel="Create"
+          onConfirm={(name) => {
+            setCreatingKb(false);
+            void kb.createKb(name, "");
+          }}
+          onCancel={() => setCreatingKb(false)}
+        />
+      )}
+      <ConfirmDialog
+        open={pendingDeleteKb !== null}
+        title={`Delete knowledge base "${pendingDeleteKb?.name ?? ""}"?`}
+        description="All uploaded documents, their indexed vectors and pipeline traces will be removed. This cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          if (pendingDeleteKb) {
+            setSelectedDocId(null);
+            void kb.deleteKb(pendingDeleteKb.id);
+          }
+          setPendingDeleteKb(null);
+        }}
+        onCancel={() => setPendingDeleteKb(null)}
+      />
     </div>
   );
 }
