@@ -103,7 +103,15 @@ export function KnowledgeSidebar({
                   size="icon-sm"
                   className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100"
                   aria-label={`Delete ${kb.name}`}
-                  onClick={() => onDelete(kb.id)}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Delete knowledge base "${kb.name}" and all of its documents? This cannot be undone.`,
+                      )
+                    ) {
+                      onDelete(kb.id);
+                    }
+                  }}
                 >
                   <Trash2 className="size-3.5" />
                 </Button>

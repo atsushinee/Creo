@@ -24,3 +24,14 @@ export interface KbDocumentInfo {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface PipelineEventInfo {
+  id: number;
+  docId: string;
+  kbId: string;
+  stage: string;
+  status: string;
+  detail: string | null;
+  durationMs: number | null;
+  createdAt: string;
+}

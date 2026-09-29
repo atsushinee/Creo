@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import * as kbApi from "@/services/kbApi";
-import type { KbDocumentInfo, KnowledgeBaseInfo } from "@/types/knowledgeBase";
+import type {
+  KbDocumentInfo,
+  KnowledgeBaseInfo,
+  PipelineEventInfo,
+} from "@/types/knowledgeBase";
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -18,6 +22,7 @@ export function useKnowledgeBase() {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseInfo[]>([]);
   const [currentKbId, setCurrentKbId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<KbDocumentInfo[]>([]);
+  const [traceByDoc, setTraceByDoc] = useState<Record<string, PipelineEventInfo[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
@@ -158,6 +163,20 @@ export function useKnowledgeBase() {
     [refreshDocuments],
   );
 
+  const loadTrace = useCallback(async (kbId: string, docId: string) => {
+    try {
+      const events = await kbApi.getDocumentTrace(kbId, docId);
+      setTraceByDoc((previous) => ({ ...previous, [docId]: events }));
+    } catch (traceError) {
+      setError(errorMessage(traceError));
+    }
+  }, []);
+
+  const documentFileUrl = useCallback(
+    (kbId: string, docId: string) => kbApi.documentFileUrl(kbId, docId),
+    [],
+  );
+
   const currentKb = knowledgeBases.find((kb) => kb.id === currentKbId) ?? null;
 
   return {
@@ -165,6 +184,7 @@ export function useKnowledgeBase() {
     currentKbId,
     currentKb,
     documents,
+    traceByDoc,
     error,
     isBusy,
     selectKb,
@@ -173,6 +193,8 @@ export function useKnowledgeBase() {
     uploadDocument,
     deleteDocument,
     reingestDocument,
+    loadTrace,
+    documentFileUrl,
     dismissError: () => setError(null),
   };
 }

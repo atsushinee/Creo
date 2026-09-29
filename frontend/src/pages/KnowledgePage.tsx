@@ -29,10 +29,13 @@ export default function KnowledgePage() {
             <DocumentPanel
               kb={currentKb}
               documents={kb.documents}
+              traceByDoc={kb.traceByDoc}
               isBusy={kb.isBusy}
               onUpload={(file) => kb.uploadDocument(currentKb.id, file)}
               onDeleteDoc={(docId) => void kb.deleteDocument(currentKb.id, docId)}
               onReingest={(docId) => void kb.reingestDocument(currentKb.id, docId)}
+              onLoadTrace={(docId) => void kb.loadTrace(currentKb.id, docId)}
+              onGetFileUrl={(docId) => kb.documentFileUrl(currentKb.id, docId)}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-6">

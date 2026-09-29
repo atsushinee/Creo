@@ -4,7 +4,7 @@
  */
 
 import { ApiError, readErrorDetail } from "@/services/agentApi";
-import type { KbDocumentInfo, KnowledgeBaseInfo } from "@/types/knowledgeBase";
+import type { KbDocumentInfo, KnowledgeBaseInfo, PipelineEventInfo } from "@/types/knowledgeBase";
 
 const API_BASE = "/api";
 
@@ -69,4 +69,13 @@ export async function reingestDocument(kbId: string, docId: string): Promise<KbD
       method: "POST",
     }),
   );
+}
+
+/** Inline PDF URL for the pdf.js preview (served by the backend). */
+export function documentFileUrl(kbId: string, docId: string): string {
+  return kbUrl(kbId, `/documents/${encodeURIComponent(docId)}/file`);
+}
+
+export async function getDocumentTrace(kbId: string, docId: string): Promise<PipelineEventInfo[]> {
+  return parseBody(await fetch(kbUrl(kbId, `/documents/${encodeURIComponent(docId)}/trace`)));
 }
