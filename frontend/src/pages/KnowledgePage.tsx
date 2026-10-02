@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Upload } from "lucide-react";
 
 import { DocChatPanel } from "@/components/knowledge/DocChatPanel";
@@ -12,7 +12,7 @@ import { ErrorBanner } from "@/components/chat/ErrorBanner";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBase";
-import type { KbDocumentInfo, KnowledgeBaseInfo } from "@/types/knowledgeBase";
+import type { KbDocumentInfo, KnowledgeBaseInfo, ParseElementInfo } from "@/types/knowledgeBase";
 
 /**
  * Dify-style three-column knowledge workspace:
@@ -28,9 +28,38 @@ export default function KnowledgePage() {
   const [creatingKb, setCreatingKb] = useState(false);
   const [pendingDeleteKb, setPendingDeleteKb] = useState<KnowledgeBaseInfo | null>(null);
   const [parseDoc, setParseDoc] = useState<KbDocumentInfo | null>(null);
+  const [parseElements, setParseElements] = useState<ParseElementInfo[]>([]);
+  const [parseElementsDocId, setParseElementsDocId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const currentKb = kb.currentKb;
   const selectedDoc = kb.documents.find((doc) => doc.id === selectedDocId) ?? null;
+  const fetchParseResult = kb.fetchParseResult;
+  const selectedDocIdStr = selectedDoc?.id ?? null;
+
+  // Parse elements (with coordinates, when cached) for the preview overlay.
+  useEffect(() => {
+    if (!currentKb || !selectedDocIdStr) {
+      return;
+    }
+    let cancelled = false;
+    fetchParseResult(currentKb.id, selectedDocIdStr)
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setParseElements(result.available ? result.elements : []);
+        setParseElementsDocId(selectedDocIdStr);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setParseElements([]);
+          setParseElementsDocId(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentKb, selectedDocIdStr, fetchParseResult]);
 
   const uploadFiles = async (files: FileList | null) => {
     if (!currentKb || !files) {
@@ -151,6 +180,7 @@ export default function KnowledgePage() {
               key={selectedDoc.id}
               url={kb.documentFileUrl(currentKb.id, selectedDoc.id)}
               title={selectedDoc.filename}
+              elements={parseElementsDocId === selectedDoc.id ? parseElements : []}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-6">

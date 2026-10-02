@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-10-03
+
+### Unstructured 坐标可视化 + 解析缓存 v2
+
+- **include 值实测**：`coordinates` 与 `table_html` 可同时请求（此前只敢单独用）；坐标形状为 `metadata.coordinates = {points: [[x,y]…], system: {layout_width, layout_height, …}}`——前端按 layout 尺寸归一化映射到 pdf.js 画布（DPI 无关），并对 `width/height` 拼写做了防御。
+- **解析缓存 v2**：文件名加 `-v2` 版本戳（`{sha16}-{profile}-v2.json`），升级请求后旧的无坐标条目自动失效；`save_parse` 会清理同文档同 profile 的旧格式文件。**已有文档需要一次 reingest 才能拿到坐标**（缓存 miss → 重解析，计费一次）。
+- **预览叠加层**：SVG 覆盖在 pdf.js canvas 之上（画布像素尺寸 = viewport 尺寸，坐标比例直接映射）；类型→描边色映射设计 token（CSS 变量用于 SVG 属性，未违反 hex 禁令）；`<title>` 提供悬停原文；rect `pointer-events: auto` + svg `none` 保证缩放滚动不受影响。
+- **React 细节**：查看器弹窗的挂载期加载必须走 `.then` 回调 setState（`react-hooks/set-state-in-effect` 对"effect 内调用含 setState 的 useCallback"一律告警，即使函数体先 await）——与 useKnowledgeBase 挂载模式保持一致。
+
+---
+
 ## 2026-09-30（续）
 
 ### 长对话渲染优化 + 评审补强（容错清单）

@@ -235,6 +235,7 @@ async def get_document_parse_result(
                 text=str(element.get("text") or ""),
                 pageNumber=int((element.get("metadata") or {}).get("page_number") or 0),
                 tableHtml=(element.get("metadata") or {}).get("text_as_html"),
+                coordinates=(element.get("metadata") or {}).get("coordinates"),
             )
             for element in elements
         ],

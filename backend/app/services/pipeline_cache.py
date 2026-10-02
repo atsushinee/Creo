@@ -4,11 +4,14 @@ Re-running a failed ingest, re-ingesting an identical file, or ingesting the
 same document into another knowledge base must not re-spend API quota. The
 cache lives under `{kb_data_dir}/_cache` and is keyed by content fingerprints:
 
-  parse/{pdf_sha256[:16]}-{profile}.json            → element dicts
-  embed/{sha256(chunk texts)[:24]}-{model}-{dim}.json → dense vectors
+  parse/{pdf_sha256[:16]}-{profile}-v2.json            → element dicts
+  embed/{sha256(chunk texts)[:24]}-{model}-{dim}.json   → dense vectors
 
-Chunk texts carry no filename, so the same content ingested under a different
-name still hits the embedding cache.
+The `-v2` parse tag marks entries that carry coordinates (needed for the
+element-box overlay); bumping the tag invalidates older, coordinate-less
+entries so the next ingest re-parses once with the upgraded request. Chunk
+texts carry no filename, so the same content ingested under a different name
+still hits the embedding cache.
 """
 
 import hashlib
@@ -19,6 +22,8 @@ from typing import Any
 from app.core.logging import get_logger
 
 logger = get_logger("services.pipeline_cache")
+
+PARSE_CACHE_VERSION = "v2"
 
 
 def _texts_fingerprint(texts: list[str]) -> str:
@@ -50,16 +55,24 @@ class PipelineCache:
 
     # --- parse ---------------------------------------------------------------
 
+    def _parse_path(self, pdf_sha256: str, profile: str) -> Path:
+        return self._parse_dir / f"{pdf_sha256[:16]}-{profile}-{PARSE_CACHE_VERSION}.json"
+
     def load_parse(self, pdf_sha256: str, profile: str) -> list[dict] | None:
-        payload = self._load(self._parse_dir / f"{pdf_sha256[:16]}-{profile}.json")
+        payload = self._load(self._parse_path(pdf_sha256, profile))
         elements = payload.get("elements") if payload else None
         return elements if isinstance(elements, list) else None
 
     def save_parse(
         self, pdf_sha256: str, profile: str, elements: list[dict], source: str
     ) -> None:
+        # Drop stale entries of the same document (older cache formats).
+        current = self._parse_path(pdf_sha256, profile).name
+        for stale in self._parse_dir.glob(f"{pdf_sha256[:16]}-{profile}-*.json"):
+            if stale.name != current:
+                stale.unlink(missing_ok=True)
         self._save(
-            self._parse_dir / f"{pdf_sha256[:16]}-{profile}.json",
+            self._parse_path(pdf_sha256, profile),
             {"pdf_sha256": pdf_sha256, "profile": profile, "source": source, "elements": elements},
         )
 

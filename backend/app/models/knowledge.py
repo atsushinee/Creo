@@ -55,6 +55,7 @@ class ParseElementOut(BaseModel):
     text: str
     pageNumber: int
     tableHtml: str | None = None
+    coordinates: dict | None = None
 
 
 class ParseResultOut(BaseModel):

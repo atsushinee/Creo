@@ -78,6 +78,8 @@ const en = {
   "viewer.jumpFirst": "Jump to first page",
   "viewer.jumpLast": "Jump to last page",
   "viewer.jumpPage": "Jump to page",
+  "viewer.boxes": "Element boxes",
+  "viewer.boxesUnavailable": "No coordinates for this document — re-ingest to enable the box overlay",
 
   "parse.title": "Parse result",
   "parse.empty": "No cached parse result — re-ingest to generate one.",
@@ -193,6 +195,8 @@ const zh: Record<keyof typeof en, string> = {
   "viewer.jumpFirst": "跳到第一页",
   "viewer.jumpLast": "跳到最后一页",
   "viewer.jumpPage": "跳转到页码",
+  "viewer.boxes": "元素框选",
+  "viewer.boxesUnavailable": "该文档没有坐标数据——重新入库后即可显示元素框选",
 
   "parse.title": "解析结果",
   "parse.empty": "暂无缓存的解析结果——重新入库即可生成。",

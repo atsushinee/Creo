@@ -65,16 +65,17 @@ class UnstructuredClient:
         `output="elements"` selects the element representation (required for
         `include`, which is rejected on the default markdown output). The only
         include projections are "coordinates" and "table_html" — the table
-        HTML then arrives on element metadata `text_as_html` (naming differs
-        between request and response). `page_number` (one-based) is always
-        returned on element metadata. All verified against the live API.
+        HTML then arrives on element metadata `text_as_html` and the bounding
+        boxes on metadata `coordinates` (naming differs between request and
+        response). `page_number` (one-based) is always returned on element
+        metadata. All verified against the live API.
         """
         try:
             with path.open("rb") as pdf:
                 result = self._client.parse.run(
                     input=pdf,
                     output="elements",
-                    include=["table_html"],
+                    include=["coordinates", "table_html"],
                     profile=self._profile,
                 )
         except Exception as exc:
@@ -92,5 +93,8 @@ class UnstructuredClient:
             "metadata": {
                 "page_number": getattr(metadata, "page_number", None),
                 "text_as_html": getattr(metadata, "text_as_html", None),
+                # Bounding-box projection (dict with points + layout system),
+                # present when "coordinates" is included in the request.
+                "coordinates": getattr(metadata, "coordinates", None),
             },
         }

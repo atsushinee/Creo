@@ -1,21 +1,119 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronFirst, ChevronLast } from "lucide-react";
+import { ChevronFirst, ChevronLast, Scan } from "lucide-react";
 
 import { pdfjs } from "@/lib/pdfjs";
 import { useI18n } from "@/hooks/useI18n";
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { ElementCoordinates, ParseElementInfo } from "@/types/knowledgeBase";
+import { cn } from "@/lib/utils";
 
 interface ViewerPageProps {
   doc: PDFDocumentProxy;
   pageNumber: number;
   width: number;
+  showBoxes: boolean;
+  boxes: ParseElementInfo[];
   registerRef: (element: HTMLDivElement | null) => void;
 }
 
+/** Unstructured element types → design-token strokes (DESIGN.md §2). */
+const TYPE_STROKE: Record<string, string> = {
+  Title: "var(--primary)",
+  NarrativeText: "var(--success)",
+  Table: "var(--warning)",
+  ListItem: "var(--error)",
+  Formula: "var(--primary)",
+  Header: "var(--muted-foreground)",
+  Footer: "var(--muted-foreground)",
+  PageNumber: "var(--muted-foreground)",
+};
+
+function strokeFor(type: string): string {
+  return TYPE_STROKE[type] ?? "var(--primary)";
+}
+
+/** Map layout-space coordinates onto the rendered canvas pixel rect. */
+function boxRect(
+  coordinates: ElementCoordinates,
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number; w: number; h: number } | null {
+  const { points, system } = coordinates;
+  if (!points?.length || !system) {
+    return null;
+  }
+  // Both spellings appear in the wild; normalize defensively.
+  const layoutWidth = system.layout_width ?? system.width ?? 0;
+  const layoutHeight = system.layout_height ?? system.height ?? 0;
+  if (!layoutWidth || !layoutHeight) {
+    return null;
+  }
+  const xs = points.map((point) => point[0]);
+  const ys = points.map((point) => point[1]);
+  const x = (Math.min(...xs) / layoutWidth) * canvasWidth;
+  const y = (Math.min(...ys) / layoutHeight) * canvasHeight;
+  const w = ((Math.max(...xs) - Math.min(...xs)) / layoutWidth) * canvasWidth;
+  const h = ((Math.max(...ys) - Math.min(...ys)) / layoutHeight) * canvasHeight;
+  return { x, y, w: Math.max(w, 2), h: Math.max(h, 2) };
+}
+
+function BoxesOverlay({
+  boxes,
+  canvasWidth,
+  canvasHeight,
+}: {
+  boxes: ParseElementInfo[];
+  canvasWidth: number;
+  canvasHeight: number;
+}) {
+  return (
+    <svg
+      className="absolute inset-0"
+      width={canvasWidth}
+      height={canvasHeight}
+      viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+    >
+      {boxes.map((element, index) => {
+        const coordinates = element.coordinates;
+        if (!coordinates) {
+          return null;
+        }
+        const rect = boxRect(coordinates, canvasWidth, canvasHeight);
+        if (!rect) {
+          return null;
+        }
+        return (
+          <rect
+            key={index}
+            x={rect.x}
+            y={rect.y}
+            width={rect.w}
+            height={rect.h}
+            fill="transparent"
+            stroke={strokeFor(element.type)}
+            strokeWidth={1.5}
+            style={{ pointerEvents: "auto" }}
+          >
+            <title>{`${element.type}: ${element.text.slice(0, 160)}`}</title>
+          </rect>
+        );
+      })}
+    </svg>
+  );
+}
+
 /** One page, rendered lazily the first time it scrolls near the viewport. */
-function ViewerPage({ doc, pageNumber, width, registerRef }: ViewerPageProps) {
+function ViewerPage({
+  doc,
+  pageNumber,
+  width,
+  showBoxes,
+  boxes,
+  registerRef,
+}: ViewerPageProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [canvasSize, setCanvasSize] = useState<{ w: number; h: number } | null>(null);
   const [rendered, setRendered] = useState(false);
   const [visible, setVisible] = useState(false);
 
@@ -58,6 +156,7 @@ function ViewerPage({ doc, pageNumber, width, registerRef }: ViewerPageProps) {
       canvas.height = viewport.height;
       await page.render({ canvas, viewport }).promise;
       if (!cancelled) {
+        setCanvasSize({ w: viewport.width, h: viewport.height });
         setRendered(true);
       }
     })().catch((renderError: unknown) => {
@@ -71,6 +170,8 @@ function ViewerPage({ doc, pageNumber, width, registerRef }: ViewerPageProps) {
     };
   }, [visible, rendered, doc, pageNumber, width]);
 
+  const pageBoxes = boxes.filter((element) => element.pageNumber === pageNumber);
+
   return (
     <div
       ref={(element) => {
@@ -79,10 +180,19 @@ function ViewerPage({ doc, pageNumber, width, registerRef }: ViewerPageProps) {
       }}
       className="mb-3"
     >
-      <canvas
-        ref={canvasRef}
-        className={`mx-auto block w-full rounded-md border bg-white shadow-sm ${rendered ? "" : "hidden"}`}
-      />
+      <div className="relative mx-auto w-fit">
+        <canvas
+          ref={canvasRef}
+          className={`block rounded-md border bg-white shadow-sm ${rendered ? "" : "hidden"}`}
+        />
+        {rendered && showBoxes && canvasSize && (
+          <BoxesOverlay
+            boxes={pageBoxes}
+            canvasWidth={canvasSize.w}
+            canvasHeight={canvasSize.h}
+          />
+        )}
+      </div>
       {!rendered && (
         <div
           className="flex w-full items-center justify-center rounded-md border bg-surface text-[12px] text-muted-foreground"
@@ -95,6 +205,15 @@ function ViewerPage({ doc, pageNumber, width, registerRef }: ViewerPageProps) {
   );
 }
 
+interface ViewerPageProps {
+  doc: PDFDocumentProxy;
+  pageNumber: number;
+  width: number;
+  showBoxes: boolean;
+  boxes: ParseElementInfo[];
+  registerRef: (element: HTMLDivElement | null) => void;
+}
+
 function isAbortLike(error: unknown): boolean {
   const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
   return (
@@ -105,10 +224,18 @@ function isAbortLike(error: unknown): boolean {
 /**
  * Continuous-scroll PDF viewer for the right column. Remount via key={docId}
  * when the document changes; pages render lazily as they approach the view.
- * The header offers jump-to-page plus top/bottom shortcuts and tracks the
- * page currently in view while scrolling.
+ * With parse elements (with coordinates) the pages gain the Unstructured-style
+ * element-box overlay, color-coded by element type.
  */
-export function PdfViewer({ url, title }: { url: string; title: string }) {
+export function PdfViewer({
+  url,
+  title,
+  elements = [],
+}: {
+  url: string;
+  title: string;
+  elements?: ParseElementInfo[];
+}) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -117,7 +244,9 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
   const [width, setWidth] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState("1");
+  const [showBoxes, setShowBoxes] = useState(false);
   const numPages = doc?.numPages ?? 0;
+  const hasCoordinates = elements.some((element) => element.coordinates);
 
   useEffect(() => {
     const loadingTask = pdfjs.getDocument({ url });
@@ -187,6 +316,22 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
+            aria-label={t("viewer.boxes")}
+            title={hasCoordinates ? t("viewer.boxes") : t("viewer.boxesUnavailable")}
+            disabled={!hasCoordinates}
+            onClick={() => setShowBoxes((value) => !value)}
+            className={cn(
+              "flex size-7 items-center justify-center rounded-md transition-colors",
+              showBoxes
+                ? "bg-primary text-white"
+                : "text-muted-foreground hover:bg-surface hover:text-foreground",
+              !hasCoordinates && "cursor-not-allowed opacity-40",
+            )}
+          >
+            <Scan className="size-4" />
+          </button>
+          <button
+            type="button"
             aria-label={t("viewer.jumpFirst")}
             title={t("viewer.jumpFirst")}
             disabled={!doc}
@@ -247,6 +392,8 @@ export function PdfViewer({ url, title }: { url: string; title: string }) {
                 doc={doc}
                 pageNumber={index + 1}
                 width={width}
+                showBoxes={showBoxes}
+                boxes={elements}
                 registerRef={(element) => {
                   pageRefs.current[index] = element;
                 }}

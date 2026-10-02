@@ -53,11 +53,22 @@ export interface RecallTestResult {
   sparse: RecallHit[];
 }
 
+/**
+ * Bounding-box projection from the Unstructured parse result. `points` are
+ * pixel coordinates in the layout system; `system` carries the layout
+ * dimensions (layout_width/layout_height) used to normalize onto the page.
+ */
+export interface ElementCoordinates {
+  points: number[][];
+  system: Record<string, number>;
+}
+
 export interface ParseElementInfo {
   type: string;
   text: string;
   pageNumber: number;
   tableHtml: string | null;
+  coordinates?: ElementCoordinates | null;
 }
 
 export interface ParseResultInfo {

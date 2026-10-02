@@ -52,6 +52,13 @@ MVP（Agent 基础链路）稳定后，需要把本地 PDF 沉淀为可检索的
 2. **会话运行链路**：`AgentRuntime` 内置按会话的运行记录器（结构化事件：run/消息起止（耗时、字符数）/工具调用全量入参与返回（截断 1500 字符）/错误；跳过逐 token 增量），环形缓冲 400 条，进程内存（重启即清——trace 是调试观测，不是审计账本）；`GET /api/sessions/{id}/trace` + 前端 RunTraceDialog（会话侧栏每行与文档对话头部入口，时间线 + 可展开参数/结果）。
 3. 决策依据：追踪走会话侧（对话行为与文档无关），入库追踪（pipeline_event）走文档侧，两者互补；运行记录选内存而非 SQLite——它是排障工具而非持久业务数据，避免给会话库引入写放大。
 
+## Update 5（2026-10-03）：Unstructured 官网式元素框选可视化
+
+1. **解析请求升级**：`include=["coordinates", "table_html"]`——元素携带 bounding-box 坐标（`metadata.coordinates`：points + layout 尺寸），随 PipelineCache v2 持久化（解析缓存文件名加 `-v2` 版本戳，旧的无坐标条目自动失效，下次入库重解析一次拿到坐标）。
+2. **预览叠加层（跟官网一致）**：右栏预览新增"元素框选"开关——pdf.js 页面渲染之上叠加 SVG 边框层，坐标按 layout 尺寸归一化映射到画布，颜色按元素类型映射设计 token（Title=primary / NarrativeText=success / Table=warning / ListItem=error…），悬停显示类型与原文，来源文本入 chunk 不受影响。
+3. **降级**：无坐标的旧文档，框选开关禁用并提示"重新入库后可用"；文本视图（解析结果弹窗）不受影响。
+4. 决策依据：坐标只在"查看"时需要，不入 Milvus（分块 metadata 不携带，避免无谓膨胀）；渲染放前端（pdf.js 已具备页面位图），后端零新依赖。
+
 ## Alternatives
 
 | 方案 | 不选原因 |
