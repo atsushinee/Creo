@@ -53,13 +53,18 @@ def make_pipeline(
     tmp_path: Path,
     elements: list[dict] | None = None,
     error: Exception | None = None,
+    chunk_strategy: str = "pack",
 ) -> tuple[SqliteKnowledgeService, KnowledgeBase, KbDocument, IngestionService, FakeVectorStore]:
     kb_service = SqliteKnowledgeService(tmp_path / "kb")
     kb = kb_service.create_kb("docs")
     doc = kb_service.save_upload(kb.id, "manual.pdf", io.BytesIO(b"%PDF-1.4"), max_bytes=10_000)
     vector_store = FakeVectorStore()
     pipeline = IngestionService(
-        kb_service, FakeUnstructured(elements, error), FakeEmbeddings(), vector_store
+        kb_service,
+        FakeUnstructured(elements, error),
+        FakeEmbeddings(),
+        vector_store,
+        chunk_strategy=chunk_strategy,
     )
     return kb_service, kb, doc, pipeline, vector_store
 
@@ -194,11 +199,38 @@ def test_pack_elements_overlap_slides_the_window() -> None:
     assert chunks[2]["text"] == full[80:100]
 
 
+def test_oversized_split_survives_huge_section_prefix() -> None:
+    # A title longer than max_chars must not collapse the split window
+    # into 1-char pieces (regression: 499 chars were silently lost).
+    elements = [
+        element("Title", "超" * 900, 1),
+        element("NarrativeText", "正" * 500, 1),
+    ]
+    chunks = pack_elements(elements, "a.pdf", strategy="title_aware", max_chars=300, overlap=0)
+
+    split = [c for c in chunks if c["metadata"]["type"] == "NarrativeText"]
+    assert [len(c["text"]) for c in split] == [300, 200]  # full window, no shattering
+    assert "".join(c["text"] for c in split) == "正" * 500  # no text lost
+
+
 def test_unknown_chunk_strategy_raises() -> None:
     import pytest
 
     with pytest.raises(ValueError, match="unknown chunk strategy"):
         pack_elements([], "a.pdf", strategy="magic")
+
+
+def test_ingestion_trace_records_chunk_strategy(tmp_path: Path) -> None:
+    kb_service, kb, doc, pipeline, _ = make_pipeline(
+        tmp_path,
+        elements=[element("NarrativeText", "这是一段足够长的中文文本内容，用于入库链路测试。", 1)],
+        chunk_strategy="element",
+    )
+    pipeline.ingest(doc.id)
+
+    events = kb_service.list_pipeline_events(doc.id)
+    chunk_event = next(e for e in events if e.stage == "chunk")
+    assert json.loads(chunk_event.detail or "{}")["strategy"] == "element"
 
 
 def test_ingest_happy_path(tmp_path: Path) -> None:

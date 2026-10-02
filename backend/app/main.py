@@ -15,7 +15,7 @@ from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger, setup_logging
 from app.services.embedding_client import OpenAIEmbeddingClient
-from app.services.ingestion_service import IngestionService
+from app.services.ingestion_service import CHUNK_STRATEGIES, IngestionService
 from app.services.kb_search import KbSearchService
 from app.services.kb_service import SqliteKnowledgeService
 from app.services.kb_vector_store import MilvusVectorStore
@@ -97,6 +97,13 @@ def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
     # re-upload of the same file never re-spends API quota (ADR-0004).
     pipeline_cache = PipelineCache(settings.kb_data_dir / "_cache")
 
+    chunk_strategy = settings.kb_chunk_strategy
+    if chunk_strategy not in CHUNK_STRATEGIES:
+        logger.warning(
+            "unknown CREO_KB_CHUNK_STRATEGY %r — falling back to 'pack'", chunk_strategy
+        )
+        chunk_strategy = "pack"
+
     application.state.ingestion_service = IngestionService(
         knowledge_service,
         unstructured,
@@ -107,7 +114,7 @@ def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
         parse_profile=settings.unstructured_profile,
         embedding_model=settings.kb_embedding_model,
         embedding_dim=settings.kb_embedding_dim,
-        chunk_strategy=settings.kb_chunk_strategy,
+        chunk_strategy=chunk_strategy,
         chunk_title_context=settings.kb_chunk_title_context,
         chunk_overlap=settings.kb_chunk_overlap,
     )

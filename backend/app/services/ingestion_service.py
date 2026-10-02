@@ -176,16 +176,24 @@ def _pack_chunks(
             buffer_type = item["type"]
         if len(item["text"]) > max_chars:
             flush()
-            budget = max_chars - (len(section) + 2 if title_context and section else 0)
-            window = max(1, min(max_chars, budget))
-            for start in range(0, len(item["text"]), max(1, window - overlap)):
+            # Sliding window; a section prefix that would squeeze the window
+            # below min_chars is dropped for the split pieces (pathological:
+            # a title longer than max_chars).
+            prefix = f"{section}\n\n" if title_context and section else ""
+            if max_chars - len(prefix) >= min_chars:
+                window = max_chars - len(prefix)
+                piece_prefix = prefix
+            else:
+                window = max_chars
+                piece_prefix = ""
+            step = max(1, window - overlap)
+            for start in range(0, len(item["text"]), step):
                 piece = item["text"][start : start + window]
                 if start != 0 and len(piece) < min_chars:
                     continue
-                prefix = f"{section}\n\n" if title_context and section else ""
                 chunks.append(
                     {
-                        "text": (prefix + piece)[:MAX_CHUNK_CHARS],
+                        "text": (piece_prefix + piece)[:MAX_CHUNK_CHARS],
                         "page_number": item["page"],
                         "metadata": {"type": item["type"], "filename": filename},
                     }
