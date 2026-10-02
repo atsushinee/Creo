@@ -187,7 +187,10 @@ All variables use the `CREO_` prefix and are set in `backend/.env` (see `.env.ex
 | `CREO_KB_EMBEDDING_MODEL` | `BAAI/bge-m3` | Embedding model |
 | `CREO_KB_EMBEDDING_DIM` | `1024` | Vector dimension (must match the model) |
 | `CREO_KB_ANALYZER` | `chinese` | BM25 analyzer; `chinese`/`english`/`standard` or a JSON analyzer_params |
-| `CREO_KB_CHUNK_MAX_CHARACTERS` | `1500` | Max characters per chunk (by_title) |
+| `CREO_KB_CHUNK_MAX_CHARACTERS` | `1500` | Max characters per chunk |
+| `CREO_KB_CHUNK_STRATEGY` | `pack` | Chunking: `pack` (greedy packing) \| `title_aware` (titles start new chunks) \| `element` (one per element). Applies at ingest — reingest to apply |
+| `CREO_KB_CHUNK_TITLE_CONTEXT` | `true` | Prepend the nearest Title/Header to every chunk (and store it as `section` metadata) |
+| `CREO_KB_CHUNK_OVERLAP` | `0` | Sliding-window overlap (chars) for oversized elements |
 | `CREO_KB_DATA_DIR` | `backend/data/kb` | Uploads + SQLite registry |
 | `CREO_KB_UPLOAD_MAX_MB` | `50` | Per-file upload limit |
 | `CREO_KB_SEARCH_TOP_K` | `5` | Default top_k for the retrieval tool |

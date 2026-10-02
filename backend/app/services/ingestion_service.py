@@ -1,6 +1,6 @@
 """Ingestion pipeline (ADR-0004, updated): PDF → Unstructured Transform API →
-element packing (client-side chunking) → dense embeddings → Milvus insert
-(sparse BM25 is derived server-side).
+chunking (configurable strategies) → dense embeddings → Milvus insert (sparse
+BM25 is derived server-side).
 
 Runs synchronously on a worker thread — FastAPI BackgroundTasks executes sync
 callables via its threadpool. Document status lives in the KnowledgeService so
@@ -22,6 +22,8 @@ logger = get_logger("services.ingestion")
 
 MIN_CHUNK_CHARS = 20
 MAX_CHUNK_CHARS = 60_000  # stay well under the Milvus VARCHAR limit
+CHUNK_STRATEGIES = ("pack", "title_aware", "element")
+_TITLE_TYPES = ("Title", "Header")
 
 
 class IngestionError(RuntimeError):
@@ -46,30 +48,40 @@ def pack_elements(
     elements: list[dict],
     filename: str,
     *,
+    strategy: str = "pack",
     max_chars: int = 1500,
     min_chars: int = MIN_CHUNK_CHARS,
+    title_context: bool = True,
+    overlap: int = 0,
 ) -> list[dict[str, Any]]:
-    """Group consecutive Unstructured elements into retrieval chunks.
+    """Chunk Unstructured elements (configurable strategy, ADR-0004 Update 6).
 
-    The Transform API returns un-chunked elements, so chunking happens here
-    (the old by_title behaviour moved client-side): tables stay standalone
-    with their HTML projection, narrative elements are greedily packed up to a
-    soft limit (~80% of max_chars), single oversized elements are hard-split,
-    and too-short fragments are dropped. Page numbers come from the first
-    element of each chunk.
+    - ``pack``       greedy packing of consecutive elements (default)
+    - ``title_aware`` like pack, but Title/Header elements force a new chunk
+    - ``element``    one chunk per element, no packing
+
+    Shared behaviour: tables stay standalone with their HTML projection;
+    oversized elements are hard-split (sliding window with `overlap` chars);
+    with `title_context` the nearest preceding Title/Header is prepended to
+    every chunk (the "merge title" pattern) and recorded in chunk metadata
+    as `section`. Page numbers come from the first element of each chunk.
     """
+    if strategy not in CHUNK_STRATEGIES:
+        raise ValueError(f"unknown chunk strategy: {strategy!r}")
     prepared: list[dict[str, Any]] = []
     for element in elements:
         if not isinstance(element, dict):
             continue
         text = str(element.get("text") or "").strip()
         meta = element.get("metadata") if isinstance(element.get("metadata"), dict) else {}
-        is_table = element.get("type") == "Table"
+        element_type = str(element.get("type") or "")
+        is_table = element_type == "Table"
+        is_title = element_type in _TITLE_TYPES
         if is_table:
             html = meta.get("text_as_html")
             if isinstance(html, str) and len(html.strip()) > len(text):
                 text = html.strip()
-        if len(text) < min_chars:
+        if len(text) < min_chars and not (title_context and is_title):
             continue
         try:
             page = int(meta.get("page_number") or 0)
@@ -79,41 +91,83 @@ def pack_elements(
             {
                 "text": text[:MAX_CHUNK_CHARS],
                 "page": page,
-                "type": str(element.get("type") or ""),
+                "type": element_type,
                 "is_table": is_table,
+                "is_title": is_title,
             }
         )
 
-    soft_limit = max(min_chars, int(max_chars * 0.8))
+    if strategy == "element":
+        return _chunk_per_element(prepared, filename)
+    return _pack_chunks(
+        prepared,
+        filename,
+        max_chars=max_chars,
+        min_chars=min_chars,
+        title_context=title_context,
+        split_on_titles=strategy == "title_aware",
+        overlap=max(0, overlap),
+    )
+
+
+def _pack_chunks(
+    prepared: list[dict[str, Any]],
+    filename: str,
+    *,
+    max_chars: int,
+    min_chars: int,
+    title_context: bool,
+    split_on_titles: bool,
+    overlap: int,
+) -> list[dict[str, Any]]:
+    soft_limit = max(1, int(max_chars * 0.8))
     chunks: list[dict[str, Any]] = []
     buffer: list[str] = []
     buffer_len = 0
     buffer_page = 0
     buffer_type = ""
+    section = ""
 
     def flush() -> None:
         nonlocal buffer, buffer_len
         if not buffer:
             return
+        text = "\n\n".join(buffer)
+        prefix = f"{section}\n\n" if title_context and section else ""
         chunks.append(
             {
-                "text": "\n\n".join(buffer),
+                "text": (prefix + text)[:MAX_CHUNK_CHARS],
                 "page_number": buffer_page,
-                "metadata": {"type": buffer_type, "filename": filename},
+                "metadata": {
+                    "type": buffer_type,
+                    "filename": filename,
+                    **({"section": section} if section else {}),
+                },
             }
         )
         buffer, buffer_len = [], 0
 
+    def table_chunk(item: dict[str, Any]) -> None:
+        prefix = f"{section}\n\n" if title_context and section else ""
+        extra = {"section": section} if section else {}
+        chunks.append(
+            {
+                "text": (prefix + item["text"])[:MAX_CHUNK_CHARS],
+                "page_number": item["page"],
+                "metadata": {"type": "Table", "filename": filename, **extra},
+            }
+        )
+
     for item in prepared:
         if item["is_table"]:
             flush()
-            chunks.append(
-                {
-                    "text": item["text"],
-                    "page_number": item["page"],
-                    "metadata": {"type": "Table", "filename": filename},
-                }
-            )
+            table_chunk(item)
+            continue
+        if item["is_title"] and (split_on_titles or title_context):
+            # A title always opens a new section: pending content is flushed
+            # and (with title_context) the title rides along as a prefix.
+            flush()
+            section = item["text"]
             continue
         if buffer and buffer_len + len(item["text"]) > soft_limit:
             flush()
@@ -122,21 +176,38 @@ def pack_elements(
             buffer_type = item["type"]
         if len(item["text"]) > max_chars:
             flush()
-            for start in range(0, len(item["text"]), max_chars):
-                piece = item["text"][start : start + max_chars]
-                if start == 0 or len(piece) >= min_chars:
-                    chunks.append(
-                        {
-                            "text": piece,
-                            "page_number": item["page"],
-                            "metadata": {"type": item["type"], "filename": filename},
-                        }
-                    )
+            budget = max_chars - (len(section) + 2 if title_context and section else 0)
+            window = max(1, min(max_chars, budget))
+            for start in range(0, len(item["text"]), max(1, window - overlap)):
+                piece = item["text"][start : start + window]
+                if start != 0 and len(piece) < min_chars:
+                    continue
+                prefix = f"{section}\n\n" if title_context and section else ""
+                chunks.append(
+                    {
+                        "text": (prefix + piece)[:MAX_CHUNK_CHARS],
+                        "page_number": item["page"],
+                        "metadata": {"type": item["type"], "filename": filename},
+                    }
+                )
             continue
         buffer.append(item["text"])
         buffer_len += len(item["text"])
     flush()
     return chunks
+
+
+def _chunk_per_element(
+    prepared: list[dict[str, Any]], filename: str
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "text": item["text"],
+            "page_number": item["page"],
+            "metadata": {"type": item["type"], "filename": filename},
+        }
+        for item in prepared
+    ]
 
 
 class IngestionService:
@@ -154,6 +225,9 @@ class IngestionService:
         parse_profile: str = "best",
         embedding_model: str = "",
         embedding_dim: int = 0,
+        chunk_strategy: str = "pack",
+        chunk_title_context: bool = True,
+        chunk_overlap: int = 0,
     ) -> None:
         self._knowledge = knowledge_service
         self._unstructured = unstructured
@@ -164,6 +238,9 @@ class IngestionService:
         self._parse_profile = parse_profile
         self._embedding_model = embedding_model
         self._embedding_dim = embedding_dim
+        self._chunk_strategy = chunk_strategy
+        self._chunk_title_context = chunk_title_context
+        self._chunk_overlap = chunk_overlap
 
     # --- trace ---------------------------------------------------------------
 
@@ -230,8 +307,21 @@ class IngestionService:
 
             stage = "chunk"
             started = time.perf_counter()
-            chunks = pack_elements(elements, doc.filename, max_chars=self._max_chars)
-            self._event(doc, "chunk", "succeeded", {"chunks": len(chunks)}, _elapsed(started))
+            chunks = pack_elements(
+                elements,
+                doc.filename,
+                strategy=self._chunk_strategy,
+                max_chars=self._max_chars,
+                title_context=self._chunk_title_context,
+                overlap=self._chunk_overlap,
+            )
+            self._event(
+                doc,
+                "chunk",
+                "succeeded",
+                {"chunks": len(chunks), "strategy": self._chunk_strategy},
+                _elapsed(started),
+            )
             if not chunks:
                 raise IngestionError("no extractable text (scanned PDF? try profile=best)")
 

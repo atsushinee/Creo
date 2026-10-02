@@ -187,7 +187,10 @@ CREO_KB_EMBEDDING_DIM=1024
 | `CREO_KB_EMBEDDING_MODEL` | `BAAI/bge-m3` | Embedding 模型 |
 | `CREO_KB_EMBEDDING_DIM` | `1024` | 向量维度（必须与模型一致） |
 | `CREO_KB_ANALYZER` | `chinese` | BM25 分析器；`chinese`/`english`/`standard` 或 JSON analyzer_params |
-| `CREO_KB_CHUNK_MAX_CHARACTERS` | `1500` | 单块最大字符数（by_title） |
+| `CREO_KB_CHUNK_MAX_CHARACTERS` | `1500` | 单块最大字符数 |
+| `CREO_KB_CHUNK_STRATEGY` | `pack` | 分块策略：`pack`（贪心打包）\| `title_aware`（标题强制分节）\| `element`（一元素一块）。入库时生效——改后需重新入库 |
+| `CREO_KB_CHUNK_TITLE_CONTEXT` | `true` | 将最近的标题前置到每个分块（并写入 `section` 元数据） |
+| `CREO_KB_CHUNK_OVERLAP` | `0` | 超长元素滑窗切分的重叠字符数 |
 | `CREO_KB_DATA_DIR` | `backend/data/kb` | 上传文件 + SQLite 登记库 |
 | `CREO_KB_UPLOAD_MAX_MB` | `50` | 单文件上传上限 |
 | `CREO_KB_SEARCH_TOP_K` | `5` | 检索工具默认 top_k |

@@ -107,6 +107,9 @@ def _build_knowledge_stack(application: FastAPI, settings: Settings) -> list:
         parse_profile=settings.unstructured_profile,
         embedding_model=settings.kb_embedding_model,
         embedding_dim=settings.kb_embedding_dim,
+        chunk_strategy=settings.kb_chunk_strategy,
+        chunk_title_context=settings.kb_chunk_title_context,
+        chunk_overlap=settings.kb_chunk_overlap,
     )
     application.state.kb_search_service = search_service
     application.state.vector_store_service = vector_store

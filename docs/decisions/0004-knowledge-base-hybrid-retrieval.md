@@ -59,6 +59,18 @@ MVP（Agent 基础链路）稳定后，需要把本地 PDF 沉淀为可检索的
 3. **降级**：无坐标的旧文档，框选开关禁用并提示"重新入库后可用"；文本视图（解析结果弹窗）不受影响。
 4. 决策依据：坐标只在"查看"时需要，不入 Milvus（分块 metadata 不携带，避免无谓膨胀）；渲染放前端（pdf.js 已具备页面位图），后端零新依赖。
 
+## Update 6（2026-10-03）：可配置分块策略（合并标题等）
+
+分块从固定行为升级为策略可配（全局配置，入库时生效——改后 reingest 应用）：
+
+```text
+CREO_KB_CHUNK_STRATEGY        pack（默认，贪心打包）| title_aware（标题强制分节）| element（一元素一块）
+CREO_KB_CHUNK_TITLE_CONTEXT   true：最近的 Title/Header 前置到每个分块文本（"合并标题"），并写入 metadata.section
+CREO_KB_CHUNK_OVERLAP         超长元素滑窗切分的重叠字符数（默认 0）
+```
+
+关键修正：此前 Title/Header 元素因过短被 min_chars 丢弃——**章节标题丢失**是分块质量的主要缺陷。现 title_context 开启时标题豁免长度过滤、总是开启新节并前置进文本（每个分块自带上文，嵌入质量提升）；`section` 同时进 Milvus metadata 供引用展示。中文语料建议 `title_aware` + `title_context`。
+
 ## Alternatives
 
 | 方案 | 不选原因 |

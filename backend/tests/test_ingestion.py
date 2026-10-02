@@ -125,6 +125,82 @@ def test_pack_elements_empty_input() -> None:
     assert pack_elements([{"type": "Image", "text": "", "metadata": {}}], "a.pdf") == []
 
 
+def element(element_type: str, text: str, page: int, **meta: object) -> dict:
+    return {"type": element_type, "text": text, "metadata": {"page_number": page, **meta}}
+
+
+def test_title_aware_strategy_splits_sections_and_prepends_titles() -> None:
+    elements = [
+        element("Title", "第一章 总则", 1),
+        element("NarrativeText", "总则正文内容，足够长不被丢弃。" * 2, 1),
+        element("Title", "第二章 股份", 2),
+        element("Table", "tiny", 2, text_as_html="<table><tr><td>股本结构</td></tr></table>"),
+        element("NarrativeText", "股份正文，也很长不被丢弃。" * 2, 3),
+    ]
+    chunks = pack_elements(elements, "a.pdf", strategy="title_aware", max_chars=400)
+
+    assert len(chunks) == 3
+    assert chunks[0]["text"].startswith("第一章 总则")
+    assert chunks[0]["metadata"]["section"] == "第一章 总则"
+    assert chunks[0]["page_number"] == 1
+    assert chunks[1]["metadata"]["type"] == "Table"  # table keeps its section prefix
+    assert chunks[1]["text"].startswith("第二章 股份")
+    assert chunks[2]["metadata"]["section"] == "第二章 股份"
+
+
+def test_pack_strategy_with_title_context_prepends_nearest_title() -> None:
+    elements = [
+        element("Title", "第一章 总则", 1),
+        element("NarrativeText", "正文内容足够长，单独成块。" * 3, 1),
+    ]
+    chunks = pack_elements(elements, "a.pdf", strategy="pack", max_chars=200)
+
+    assert len(chunks) == 1
+    assert chunks[0]["text"].startswith("第一章 总则\n\n")
+    assert chunks[0]["metadata"]["section"] == "第一章 总则"
+
+
+def test_pack_strategy_without_title_context_keeps_legacy_behaviour() -> None:
+    elements = [
+        element("Title", "短标题", 1),  # dropped: < min_chars
+        element("NarrativeText", "正文内容足够长，单独成块。" * 3, 1),
+    ]
+    chunks = pack_elements(elements, "a.pdf", strategy="pack", title_context=False)
+
+    assert len(chunks) == 1
+    assert "短标题" not in chunks[0]["text"]
+    assert "section" not in chunks[0]["metadata"]
+
+
+def test_element_strategy_maps_one_to_one() -> None:
+    elements = [
+        element("NarrativeText", "第一段，足够长。" * 3, 1),
+        element("NarrativeText", "第二段，也足够长。" * 3, 2),
+    ]
+    chunks = pack_elements(elements, "a.pdf", strategy="element")
+
+    assert [c["page_number"] for c in chunks] == [1, 2]
+    assert all("section" not in c["metadata"] for c in chunks)
+
+
+def test_pack_elements_overlap_slides_the_window() -> None:
+    full = "".join(str(i % 10) for i in range(100))  # "0123456789012…"
+    elements = [element("NarrativeText", full, 1)]
+    chunks = pack_elements(elements, "a.pdf", strategy="pack", max_chars=60, overlap=20)
+
+    # window = 60, step = 40 → 100 chars land in 3 overlapping pieces
+    assert [len(c["text"]) for c in chunks] == [60, 60, 20]
+    assert chunks[1]["text"] == full[40:100]  # second window starts at 40
+    assert chunks[2]["text"] == full[80:100]
+
+
+def test_unknown_chunk_strategy_raises() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="unknown chunk strategy"):
+        pack_elements([], "a.pdf", strategy="magic")
+
+
 def test_ingest_happy_path(tmp_path: Path) -> None:
     kb_service, kb, doc, pipeline, vector_store = make_pipeline(
         tmp_path,

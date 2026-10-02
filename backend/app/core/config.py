@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     # Changing model/dim/analyzer requires re-creating the collections.
     kb_analyzer: str = "chinese"
     kb_chunk_max_characters: int = 1500
+    # Chunking strategy (applies at ingest time — reingest to apply):
+    #   pack | title_aware | element
+    kb_chunk_strategy: str = "pack"
+    kb_chunk_title_context: bool = True  # prepend nearest Title/Header to chunks
+    kb_chunk_overlap: int = 0  # sliding-window overlap for oversized elements
     kb_upload_max_mb: int = 50
     kb_search_top_k: int = 5
 
