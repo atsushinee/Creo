@@ -68,7 +68,7 @@ class PipelineCache:
     ) -> None:
         # Drop stale entries of the same document (older cache formats).
         current = self._parse_path(pdf_sha256, profile).name
-        for stale in self._parse_dir.glob(f"{pdf_sha256[:16]}-{profile}-*.json"):
+        for stale in self._parse_dir.glob(f"{pdf_sha256[:16]}-{profile}*"):
             if stale.name != current:
                 stale.unlink(missing_ok=True)
         self._save(

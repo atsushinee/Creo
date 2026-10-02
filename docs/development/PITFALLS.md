@@ -28,6 +28,30 @@ scripts/check-boundaries.mjs · frontend/src/components/ui/dialog.tsx
 
 ---
 
+## [2026-10-03] Transform API 传输层 SSL 失败：SDK 不重试，需适配层定向重试
+
+### Problem
+
+冒烟重跑时 `parse.run` 偶发抛 `ApiException(status=0, reason="SSLError: UNEXPECTED_EOF_WHILE_READING")`，解析失败。若发生在用户 reingest 时，重新入库会再次全额计费一次解析。
+
+### Cause
+
+`unstructured-transform-client` 的内置重试策略：写操作只在"确定未到达服务端"时重试（连接拒绝/DNS）；SSL 握手中断属于"不确定"→ 不重试。但 status=0 恰恰证明没有 HTTP 响应、服务端未处理——不会产生计费。
+
+### Solution
+
+适配层对 `ApiException.status == 0` 的传输失败做最多 2 次补充重试（2s/4s 退避）；HTTP 4xx/5xx 一律不重试（服务端已处理，避免重复计费/重复处理）。
+
+### Lesson
+
+"可安全重试"的判据不是异常类型而是**计费语义**：证明未到达 = 可重试；已到达 = 不重试。SDK 的保守策略合理，调用方要按自己的计费模型补一层。
+
+### Related
+
+backend/app/services/unstructured_client.py · backend/tests/test_kb_clients.py
+
+---
+
 ## [2026-09-30] 重启后"KB 消失"：两个叠加根因 + 测试数据泄漏进真实 SQLite
 
 ### Problem

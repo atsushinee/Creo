@@ -85,6 +85,43 @@ def test_parse_pdf_maps_elements_to_dicts(tmp_path: Path) -> None:
     assert call["profile"] == "best"
 
 
+def test_parse_pdf_retries_transport_failures(tmp_path: Path) -> None:
+    from unstructured_transform_client._generated.exceptions import ApiException
+
+    class FlakyParse(FakeParseNamespace):
+        def run(self, **kwargs: object) -> object:
+            self._client.calls.append(kwargs)
+            if len(self._client.calls) == 1:
+                raise ApiException(status=0, reason="SSLError")
+            return self._client.result
+
+    fake = FakeTransformClient(fake_result({"type": "Title", "text": "标题", "page_number": 1}))
+    fake.parse = FlakyParse(fake)
+    client = UnstructuredClient("key", transform_client=fake)
+
+    elements = client.parse_pdf(write_pdf(tmp_path), "doc.pdf")
+
+    assert len(fake.calls) == 2  # transport failure (status 0) retried once
+    assert elements[0]["text"] == "标题"
+
+
+def test_parse_pdf_does_not_retry_http_errors(tmp_path: Path) -> None:
+    from unstructured_transform_client._generated.exceptions import ApiException
+
+    class HttpErrorParse(FakeParseNamespace):
+        def run(self, **kwargs: object) -> object:
+            self._client.calls.append(kwargs)
+            raise ApiException(status=400, reason="bad request")
+
+    fake = FakeTransformClient()
+    fake.parse = HttpErrorParse(fake)
+    client = UnstructuredClient("key", transform_client=fake)
+
+    with pytest.raises(UnstructuredError, match="400"):
+        client.parse_pdf(write_pdf(tmp_path), "doc.pdf")
+    assert len(fake.calls) == 1  # HTTP answers are never retried
+
+
 def test_parse_pdf_custom_profile_and_close(tmp_path: Path) -> None:
     fake = FakeTransformClient(fake_result())
     client = UnstructuredClient("key", profile="balanced", transform_client=fake)

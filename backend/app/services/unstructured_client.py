@@ -7,16 +7,19 @@ TECHNICAL-NOTES) — the adapter flattens them to plain dicts so the ingestion
 pipeline stays SDK-agnostic.
 """
 
+import time
 from pathlib import Path
 from typing import Any
 
 from unstructured_transform_client import TransformClient
+from unstructured_transform_client._generated.exceptions import ApiException
 
 from app.core.logging import get_logger
 
 logger = get_logger("services.unstructured")
 
 DEFAULT_SERVER_URL = "https://transform.unstructured.io"
+TRANSPORT_RETRIES = 3
 
 
 class UnstructuredError(RuntimeError):
@@ -71,13 +74,32 @@ class UnstructuredClient:
         metadata. All verified against the live API.
         """
         try:
-            with path.open("rb") as pdf:
-                result = self._client.parse.run(
-                    input=pdf,
-                    output="elements",
-                    include=["coordinates", "table_html"],
-                    profile=self._profile,
-                )
+            for attempt in range(1, TRANSPORT_RETRIES + 1):
+                try:
+                    with path.open("rb") as pdf:
+                        result = self._client.parse.run(
+                            input=pdf,
+                            output="elements",
+                            include=["coordinates", "table_html"],
+                            profile=self._profile,
+                        )
+                    break
+                except ApiException as exc:
+                    # Transport-level failures (status 0/None: SSL drops, DNS,
+                    # refused connection) provably never reached the server —
+                    # the parse was not billed, so retrying cannot double-spend.
+                    # HTTP errors (4xx/5xx) are the server's answer: no retry.
+                    if (exc.status or 0) != 0 or attempt == TRANSPORT_RETRIES:
+                        raise
+                    wait = 2 * attempt
+                    logger.warning(
+                        "unstructured transport failure (attempt %d/%d, status=%s): %s",
+                        attempt,
+                        TRANSPORT_RETRIES,
+                        exc.status,
+                        exc,
+                    )
+                    time.sleep(wait)
         except Exception as exc:
             raise UnstructuredError(f"unstructured parse failed: {exc}") from exc
         elements = [self._element_to_dict(element) for element in (result.elements or [])]
