@@ -1,11 +1,44 @@
 import { memo } from "react";
-import type { ChatMessage } from "@/types/agent";
+import type { ChatMessage, MessagePart } from "@/types/agent";
 
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { ThinkingBlock } from "@/components/chat/ThinkingBlock";
 import { AgentStatus } from "@/components/agent/AgentStatus";
 import { ToolCallCard } from "@/components/tool/ToolCallCard";
 import { cn } from "@/lib/utils";
+
+/** Tools whose numbered results back the `[N]` citation markers in answers. */
+const SEARCH_TOOLS = new Set(["search_knowledge_base", "search_document"]);
+
+/**
+ * Parse `"[1] filename (page 3)\n<text>..."` tool results (knowledge_tools.py)
+ * into a citation-number → page map. Lines without a page stay unmapped.
+ */
+function parseCitationPages(result: unknown): number[] {
+  if (typeof result !== "string") {
+    return [];
+  }
+  const pages: number[] = [];
+  const pattern = /^\[(\d+)\][^\n]*?\(page\s*(\d+)/gim;
+  for (const match of result.matchAll(pattern)) {
+    pages[Number(match[1])] = Number(match[2]);
+  }
+  return pages;
+}
+
+/** Pages for the citations in `parts[index]`, from the nearest preceding retrieval. */
+function citationPagesForPart(parts: MessagePart[], index: number): number[] {
+  for (let i = index - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.kind !== "tool") {
+      continue;
+    }
+    if (SEARCH_TOOLS.has(part.tool.toolName) && part.tool.status === "success") {
+      return parseCitationPages(part.tool.result);
+    }
+  }
+  return [];
+}
 
 function StreamingCursor() {
   return (
@@ -26,7 +59,13 @@ function UserMessage({ message }: { message: ChatMessage }) {
   );
 }
 
-function AssistantMessage({ message }: { message: ChatMessage }) {
+function AssistantMessage({
+  message,
+  onCitationClick,
+}: {
+  message: ChatMessage;
+  onCitationClick?: (page: number) => void;
+}) {
   const streaming = message.status === "streaming";
 
   if (message.parts.length === 0) {
@@ -47,7 +86,19 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
           <ThinkingBlock key={`thinking-${index}`} text={part.text} active={streaming && index === lastIndex} />
         ) : (
           <div key={`text-${index}`} className="min-w-0">
-            <MarkdownRenderer content={part.text} />
+            <MarkdownRenderer
+              content={part.text}
+              onCitation={
+                onCitationClick
+                  ? (citation) => {
+                      const page = citationPagesForPart(message.parts, index)[citation];
+                      if (page) {
+                        onCitationClick(page);
+                      }
+                    }
+                  : undefined
+              }
+            />
             {streaming && index === lastIndex && <StreamingCursor />}
           </div>
         ),
@@ -62,7 +113,13 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
  * reference (the store updates immutably per message), so finished messages
  * skip re-render/re-parse on every token delta.
  */
-export const MessageItem = memo(function MessageItem({ message }: { message: ChatMessage }) {
+export const MessageItem = memo(function MessageItem({
+  message,
+  onCitationClick,
+}: {
+  message: ChatMessage;
+  onCitationClick?: (page: number) => void;
+}) {
   return (
     <article
       className={cn(
@@ -70,7 +127,11 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Cha
         message.role === "assistant" && "text-[14px] leading-[1.65]",
       )}
     >
-      {message.role === "user" ? <UserMessage message={message} /> : <AssistantMessage message={message} />}
+      {message.role === "user" ? (
+        <UserMessage message={message} />
+      ) : (
+        <AssistantMessage message={message} onCitationClick={onCitationClick} />
+      )}
     </article>
   );
 });

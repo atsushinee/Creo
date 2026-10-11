@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useEffect, useRef, useState } from "react";
 import { ChevronFirst, ChevronLast, Scan } from "lucide-react";
 
 import { pdfjs } from "@/lib/pdfjs";
@@ -221,21 +221,21 @@ function isAbortLike(error: unknown): boolean {
   );
 }
 
+/** Imperative API for sibling components (e.g. citation → page jumps). */
+export interface PdfViewerHandle {
+  scrollToPage: (page: number) => void;
+}
+
 /**
  * Continuous-scroll PDF viewer for the right column. Remount via key={docId}
  * when the document changes; pages render lazily as they approach the view.
  * With parse elements (with coordinates) the pages gain the Unstructured-style
  * element-box overlay, color-coded by element type.
  */
-export function PdfViewer({
-  url,
-  title,
-  elements = [],
-}: {
-  url: string;
-  title: string;
-  elements?: ParseElementInfo[];
-}) {
+export const PdfViewer = forwardRef<
+  PdfViewerHandle,
+  { url: string; title: string; elements?: ParseElementInfo[] }
+>(function PdfViewer({ url, title, elements = [] }, ref) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -306,6 +306,8 @@ export function PdfViewer({
     setPageInput(String(clamped));
     setCurrentPage(clamped);
   };
+
+  useImperativeHandle(ref, () => ({ scrollToPage }));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -407,4 +409,4 @@ export function PdfViewer({
       </div>
     </div>
   );
-}
+});

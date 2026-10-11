@@ -78,6 +78,7 @@ const en = {
   "viewer.jumpFirst": "Jump to first page",
   "viewer.jumpLast": "Jump to last page",
   "viewer.jumpPage": "Jump to page",
+  "chat.citeJump": "Jump to the cited passage in the preview",
   "viewer.boxes": "Element boxes",
   "viewer.boxesUnavailable": "No coordinates for this document — re-ingest to enable the box overlay",
 
@@ -195,6 +196,7 @@ const zh: Record<keyof typeof en, string> = {
   "viewer.jumpFirst": "跳到第一页",
   "viewer.jumpLast": "跳到最后一页",
   "viewer.jumpPage": "跳转到页码",
+  "chat.citeJump": "跳转到预览中的引用原文",
   "viewer.boxes": "元素框选",
   "viewer.boxesUnavailable": "该文档没有坐标数据——重新入库后即可显示元素框选",
 

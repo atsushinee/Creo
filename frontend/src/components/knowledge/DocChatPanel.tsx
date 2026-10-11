@@ -10,10 +10,12 @@ import type { KbDocumentInfo } from "@/types/knowledgeBase";
 interface DocChatPanelProps {
   kbId: string;
   doc: KbDocumentInfo;
+  /** Citation `[N]` markers jump to the cited page in the preview column. */
+  onCitationClick?: (page: number) => void;
 }
 
 /** Middle column: chat bound to one document (doc-scoped agent, ADR-0004). */
-export function DocChatPanel({ kbId, doc }: DocChatPanelProps) {
+export function DocChatPanel({ kbId, doc, onCitationClick }: DocChatPanelProps) {
   const { t } = useI18n();
   const chat = useDocChat(kbId, doc);
   const [showTrace, setShowTrace] = useState(false);
@@ -42,7 +44,11 @@ export function DocChatPanel({ kbId, doc }: DocChatPanelProps) {
       </div>
 
       {chat.messages.length > 0 && (
-        <ChatMessages messages={chat.messages} isStreaming={chat.isStreaming} />
+        <ChatMessages
+          messages={chat.messages}
+          isStreaming={chat.isStreaming}
+          onCitationClick={onCitationClick}
+        />
       )}
       {chat.messages.length === 0 && (
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">

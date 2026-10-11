@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Upload } from "lucide-react";
 
 import { DocChatPanel } from "@/components/knowledge/DocChatPanel";
 import { DocGrid } from "@/components/knowledge/DocGrid";
 import { ParseResultDialog } from "@/components/knowledge/ParseResultDialog";
-import { PdfViewer } from "@/components/knowledge/PdfViewer";
+import { PdfViewer, type PdfViewerHandle } from "@/components/knowledge/PdfViewer";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
@@ -31,10 +31,17 @@ export default function KnowledgePage() {
   const [parseElements, setParseElements] = useState<ParseElementInfo[]>([]);
   const [parseElementsDocId, setParseElementsDocId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<PdfViewerHandle>(null);
   const currentKb = kb.currentKb;
   const selectedDoc = kb.documents.find((doc) => doc.id === selectedDocId) ?? null;
   const fetchParseResult = kb.fetchParseResult;
   const selectedDocIdStr = selectedDoc?.id ?? null;
+
+  // Citation `[N]` markers in doc chat jump to the cited page in the preview.
+  const handleCitationClick = useCallback(
+    (page: number) => pdfRef.current?.scrollToPage(page),
+    [],
+  );
 
   // Parse elements (with coordinates, when cached) for the preview overlay.
   useEffect(() => {
@@ -162,7 +169,12 @@ export default function KnowledgePage() {
         {/* Middle: document chat */}
         <main className="flex min-w-0 flex-1 flex-col">
           {currentKb && selectedDoc ? (
-            <DocChatPanel key={selectedDoc.id} kbId={currentKb.id} doc={selectedDoc} />
+            <DocChatPanel
+              key={selectedDoc.id}
+              kbId={currentKb.id}
+              doc={selectedDoc}
+              onCitationClick={handleCitationClick}
+            />
           ) : (
             <div className="flex flex-1 items-center justify-center p-6">
               <p className="text-center text-[13px] text-muted-foreground">
@@ -177,6 +189,7 @@ export default function KnowledgePage() {
         <aside className="hidden w-[42%] max-w-2xl shrink-0 flex-col border-l xl:flex">
           {selectedDoc && currentKb ? (
             <PdfViewer
+              ref={pdfRef}
               key={selectedDoc.id}
               url={kb.documentFileUrl(currentKb.id, selectedDoc.id)}
               title={selectedDoc.filename}

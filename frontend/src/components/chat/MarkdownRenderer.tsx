@@ -1,10 +1,11 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { ComponentPropsWithoutRef } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import { CodeBlock } from "@/components/chat/CodeBlock";
+import { useI18n } from "@/hooks/useI18n";
 import { cn } from "@/lib/utils";
 
 function isBlockCode(className: string | undefined): boolean {
@@ -42,7 +43,24 @@ function Table({ children }: ComponentPropsWithoutRef<"table">) {
   );
 }
 
-const components: Components = {
+/** Standalone `[N]` citation marker: not a link target, not a reference definition. */
+const CITATION_RE = /(?<!\])\[(\d{1,2})\](?!\()/g;
+const FENCE_SPLIT_RE = /(```[\s\S]*?(?:```|$))/g;
+
+/**
+ * Rewrite `[N]` citation markers into `cite://N` links so the custom anchor
+ * component can make them clickable. Fenced code blocks are left untouched.
+ */
+function linkifyCitations(content: string): string {
+  return content
+    .split(FENCE_SPLIT_RE)
+    .map((segment, index) =>
+      index % 2 === 1 ? segment : segment.replace(CITATION_RE, "[$1](cite://$1)"),
+    )
+    .join("");
+}
+
+const baseComponents: Components = {
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   code: Code,
   a: Anchor,
@@ -66,18 +84,53 @@ const components: Components = {
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
 };
 
-/** Renders assistant markdown content (GFM + restrained code highlighting). */
+/** Renders assistant markdown content (GFM + restrained code highlighting).
+ * With `onCitation`, `[N]` markers produced by the knowledge tools become
+ * clickable and report the citation number to the caller. */
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className,
+  onCitation,
 }: {
   content: string;
   className?: string;
+  onCitation?: (citation: number) => void;
 }) {
+  const { t } = useI18n();
+  const components = useMemo<Components>(() => {
+    if (!onCitation) {
+      return baseComponents;
+    }
+    return {
+      ...baseComponents,
+      a: ({ children, href, ...props }) => {
+        const match = typeof href === "string" ? /^cite:\/\/(\d+)$/.exec(href) : null;
+        if (match) {
+          return (
+            <button
+              type="button"
+              onClick={() => onCitation(Number(match[1]))}
+              title={t("chat.citeJump")}
+              aria-label={t("chat.citeJump")}
+              className="cursor-pointer rounded-sm bg-surface px-0.5 font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              {children}
+            </button>
+          );
+        }
+        return <Anchor href={href} {...props}>{children}</Anchor>;
+      },
+    };
+  }, [onCitation, t]);
+
   return (
     <div className={cn("min-w-0 break-words", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
-        {content}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
+        components={components}
+      >
+        {onCitation ? linkifyCitations(content) : content}
       </ReactMarkdown>
     </div>
   );

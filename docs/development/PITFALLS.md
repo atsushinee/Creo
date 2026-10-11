@@ -4,6 +4,12 @@
 
 ---
 
+## [2026-10-12] 引用跳转功能（citation → page jump）
+
+No significant pitfalls encountered.
+
+---
+
 ## [2026-10-12] README 文档补强（Development / Roadmap）
 
 No significant pitfalls encountered.
