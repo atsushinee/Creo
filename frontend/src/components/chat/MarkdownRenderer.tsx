@@ -58,8 +58,10 @@ function urlTransform(url: string): string {
 
 /**
  * Rewrite citation markers into `cite://N[/P]` links so the custom anchor
- * component can make them clickable. Brackets are escaped so the marker text
- * still renders as `[N]`; fenced code blocks are left untouched.
+ * component can make them clickable. The marker is wrapped in an extra bracket
+ * pair — CommonMark allows balanced brackets in link text, so the link renders
+ * as `[N]` / `[N, page P]`; escaping brackets would break the link syntax.
+ * Fenced code blocks are left untouched.
  */
 function linkifyCitations(content: string): string {
   return content
@@ -69,8 +71,8 @@ function linkifyCitations(content: string): string {
         ? segment
         : segment.replace(CITATION_RE, (_match, num: string, page?: string) =>
             page
-              ? `\\[${num}, page ${page}\\](cite://${num}/${page})`
-              : `\\[${num}\\](cite://${num})`,
+              ? `[[${num}, page ${page}]](cite://${num}/${page})`
+              : `[[${num}]](cite://${num})`,
           ),
     )
     .join("");

@@ -9,7 +9,7 @@
 ### 引用跳转（citation → PDF 页码定位）
 
 - **映射来源**：知识检索工具的返回是纯文本（`"[1] filename (page 3)\n<chunk>\n\n[2] …"`，见 `knowledge_tools.py`），前端不需要新增事件字段——`MessageItem.parseCitationPages` 直接用正则 `/^\[(\d+)\][^\n]*?\(page\s*(\d+)/gim` 从最近一次成功的 `search_knowledge_base` / `search_document` 结果解析出"引用编号 → 页码"。文本块按 part 匹配：每个 text part 向前找最近的检索工具结果，多轮多工具场景下引用归属正确。
-- **格式容错**：模型并不总是按工具要求的 `[N]` 格式输出，实测会出现 `[1, page 3]`（页码写进方括号）。前端正则兼容两种变体：`[N]`（页码从工具结果解析）与 `[N, page P]`（内嵌页码直通，优先于工具结果解析）；两种情况标记都改写为转义方括号的链接（`\[N\](cite://N[/P])`），显示保持原样，fenced code 内不改写。
+- **格式容错**：模型并不总是按工具要求的 `[N]` 格式输出，实测会出现 `[1, page 3]`（页码写进方括号）。前端正则兼容两种变体：`[N]`（页码从工具结果解析）与 `[N, page P]`（内嵌页码直通，优先于工具结果解析）。标记改写为 `[[N, page P]](cite://N/P)` —— CommonMark 允许链接文本含平衡括号，外层括号做链接语法、内层做显示文本；**不能转义方括号**（`\[N\]` 是字面字符，不再是链接定界符，链接会失效显示原始 markdown）。fenced code 内不改写。
 - **渲染改写**：`MarkdownRenderer` 仅在传入 `onCitation` 时把独立 `[N]` 标记改写为 `[N](cite://N)` 链接（正则带 `(?<!\])` / `(?!\()` 防御：不吃 reference-style 链接与真实链接），自定义 `a` 组件拦截 `cite://` href 渲染为按钮并上报编号；**fenced code block 内不改写**（按 ``` 分段跳过）。注意：react-markdown 的 `defaultUrlTransform` 会把非标准协议消毒为空 href，必须同时传自定义 `urlTransform` 放行 `cite://`（见 PITFALLS 2026-10-12）。主聊天界面不传 handler，引用保持纯文本，零行为变化。
 - **命令式桥接**：`PdfViewer` 改 `forwardRef + useImperativeHandle` 暴露 `scrollToPage`（复用内部翻页/页码同步逻辑）；`KnowledgePage` 持 ref，`handleCitationClick` 用 `useCallback` 稳定引用穿过 DocChatPanel → ChatMessages → MessageItem（memo 组件的 props 稳定性）。
 - **已知边界**：chunk 是打包生成的，未存 chunk↔element 坐标区间，所以点击引用**跳到页**而非高亮具体元素框；元素级定位需要入库时额外落 chunk→element 映射（留作后续）。
