@@ -2,19 +2,22 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
   ariaLabel: string;
   children: ReactNode;
+  /** Overrides the default panel width (e.g. `max-w-4xl` for wide dialogs). */
+  className?: string;
 }
 
 /**
  * Design-token modal (DESIGN.md §2): token colors, 12px radius, one soft
  * shadow, fade-in. Closes on Escape and backdrop click.
  */
-export function Modal({ open, onClose, ariaLabel, children }: ModalProps) {
+export function Modal({ open, onClose, ariaLabel, children, className }: ModalProps) {
   useEffect(() => {
     if (!open) {
       return;
@@ -41,7 +44,7 @@ export function Modal({ open, onClose, ariaLabel, children }: ModalProps) {
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        className="w-full max-w-md rounded-xl border bg-background p-4 shadow-lg"
+        className={cn("w-full max-w-md rounded-xl border bg-background p-4 shadow-lg", className)}
         onClick={(event) => event.stopPropagation()}
       >
         {children}

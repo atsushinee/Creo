@@ -84,7 +84,7 @@ export function RunTraceDialog({ onClose, title, load }: RunTraceDialogProps) {
   }, [load]);
 
   return (
-    <Modal open onClose={onClose} ariaLabel={title}>
+    <Modal open onClose={onClose} ariaLabel={title} className="max-w-4xl">
       <div className="flex items-center justify-between gap-3">
         <h2 className="min-w-0 truncate text-[14px] font-semibold">{title}</h2>
         <div className="flex shrink-0 items-center gap-1">
@@ -108,7 +108,7 @@ export function RunTraceDialog({ onClose, title, load }: RunTraceDialogProps) {
         </div>
       </div>
 
-      <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-lg border bg-surface/60 p-2.5">
+      <div className="mt-3 max-h-[75vh] overflow-y-auto rounded-lg border bg-surface/60 p-2.5">
         {error && <p className="py-6 text-center text-[12.5px] text-error">{error}</p>}
         {!error && entries === null && (
           <p className="py-6 text-center text-[12.5px] text-muted-foreground">
@@ -169,14 +169,14 @@ export function RunTraceDialog({ onClose, title, load }: RunTraceDialogProps) {
                           {t("tool.arguments")} / {t("tool.result")}
                         </summary>
                         {entry.args !== undefined && (
-                          <pre className="mt-1 max-h-40 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
+                          <pre className="mt-1 max-h-64 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
                             {typeof entry.args === "string"
                               ? entry.args
                               : JSON.stringify(entry.args, null, 2)}
                           </pre>
                         )}
                         {entry.result !== undefined && (
-                          <pre className="mt-1 max-h-40 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
+                          <pre className="mt-1 max-h-64 overflow-auto rounded bg-background/70 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap">
                             {typeof entry.result === "string"
                               ? entry.result
                               : JSON.stringify(entry.result, null, 2)}
