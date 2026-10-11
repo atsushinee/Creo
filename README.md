@@ -41,9 +41,9 @@ Result
 | --- | --- |
 | ![Document chat with clickable citations and live PDF preview](imgs/1.png) | ![Three-way recall comparison](imgs/2.png) |
 
-| Agent answer with tool call · element-box overlay on the PDF |
-| --- |
-| ![Element-box overlay over the parsed PDF](imgs/3.png) |
+| Agent answer with tool call · element-box overlay on the PDF | Run trace — per-event timeline |
+| --- | --- |
+| ![Element-box overlay over the parsed PDF](imgs/3.png) | ![Run trace dialog with tool arguments, results and durations](imgs/4.png) |
 
 ## Tech Stack
 
