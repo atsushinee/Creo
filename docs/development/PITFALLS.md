@@ -6,7 +6,10 @@
 
 ## [2026-10-12] 引用跳转功能（citation → page jump）
 
-No significant pitfalls encountered.
+**Problem**：点击答案中的 `[N]` 引用，页面导航到当前路由（`/knowledge`）而不是滚动预览。
+**Cause**：react-markdown v9+ 的 `defaultUrlTransform` 只放行安全协议（http/https/mailto 等），自造的 `cite://N` 链接 href 被消毒成空字符串，自定义锚点匹配 `cite://` 失败、回退成普通 `<a href="">`，点击即导航到当前页。
+**Solution**：给 `ReactMarkdown` 传自定义 `urlTransform`——`cite://` 前缀原样放行，其余走 `defaultUrlTransform`。
+**Lesson**：react-markdown 里用非标准协议做内部链接语义时，必须同时覆盖 `urlTransform`；URL 消毒发生在组件映射之前，只写自定义 `a` 组件拦不住。
 
 ---
 

@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import type { ComponentPropsWithoutRef } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
@@ -46,6 +46,12 @@ function Table({ children }: ComponentPropsWithoutRef<"table">) {
 /** Standalone `[N]` citation marker: not a link target, not a reference definition. */
 const CITATION_RE = /(?<!\])\[(\d{1,2})\](?!\()/g;
 const FENCE_SPLIT_RE = /(```[\s\S]*?(?:```|$))/g;
+
+/** Allow the internal `cite://N` scheme through; defaultUrlTransform would strip
+ * it to an empty href (making citation clicks navigate to the current page). */
+function urlTransform(url: string): string {
+  return url.startsWith("cite://") ? url : defaultUrlTransform(url);
+}
 
 /**
  * Rewrite `[N]` citation markers into `cite://N` links so the custom anchor
@@ -129,6 +135,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={components}
+        urlTransform={urlTransform}
       >
         {onCitation ? linkifyCitations(content) : content}
       </ReactMarkdown>
