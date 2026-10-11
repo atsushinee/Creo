@@ -53,6 +53,7 @@ creo/
 ├── AGENTS.md            # Development rules (required reading for humans & AI agents)
 ├── DESIGN.md            # UI design system
 ├── CONTRIBUTING.md      # Development process & commit rules
+├── scripts/             # Boundary checks & pre-commit helper
 ├── docs/
 │   ├── architecture.md  # Architecture guide
 │   ├── decisions/       # ADRs (architecture decision records)
@@ -115,6 +116,35 @@ docker compose up --build
 ```
 
 Open <http://localhost:5173>.
+
+## Development
+
+Backend — tests and lint:
+
+```bash
+cd backend
+uv run pytest            # tests
+uv run ruff check .      # lint
+```
+
+Frontend — typecheck (strict), lint, tests:
+
+```bash
+cd frontend
+pnpm run typecheck       # tsc --noEmit
+pnpm run lint            # eslint
+pnpm run test            # vitest
+pnpm run build           # production build
+```
+
+One-shot pre-commit check (architecture boundaries, design tokens, backend ruff + pytest, frontend typecheck + lint + test + build):
+
+```bash
+bash scripts/pre-commit-check.sh
+
+# Optional: run it automatically on every git commit
+git config core.hooksPath .githooks
+```
 
 ## Knowledge Base Setup (Optional)
 
@@ -207,13 +237,26 @@ All variables use the `CREO_` prefix and are set in `backend/.env` (see `.env.ex
 | [docs/development/CHANGELOG.md](docs/development/CHANGELOG.md) | User-perceivable changes |
 | [docs/development/TECHNICAL-NOTES.md](docs/development/TECHNICAL-NOTES.md) | Technical implementation details & rationale |
 | [docs/development/PITFALLS.md](docs/development/PITFALLS.md) | Pitfall records |
-| [docs/milestones/MVP.md](docs/milestones/MVP.md) | MVP acceptance criteria |
+| [docs/milestones/](docs/milestones/) | Acceptance criteria & status (MVP, KB v1) |
 
 ## Current Status
 
 Implemented: React agent UI, DeepAgents backend, SSE streaming, agent sessions, tool call visualization, Markdown / code blocks, light / dark theme, basic error handling, logging, tests, complete governance docs — and **knowledge base v1** (PDF upload → Unstructured parsing → BM25 + dense hybrid indexing in Milvus/Zilliz → agent retrieval tool).
 
 Not implemented (boundary reserved): deep-RAG (multi-format parsing, rerank, GraphRAG), MCP, Multi-Agent, Workflow, long-term memory, authentication.
+
+## Roadmap
+
+Each stage lands on a stable base before the next begins — scope discipline is defined in [AGENTS.md](AGENTS.md), and the items below are deliberately **not** started early.
+
+- [x] MVP — agent chat, SSE streaming, sessions, tool visualization, Markdown / code blocks, themes, governance docs
+- [x] Knowledge base v1 — PDF upload, Unstructured parsing, hybrid retrieval (BM25 + dense), agent citations
+- [ ] Knowledge base v2 — multi-format parsing (Office / HTML / images), rerank, GraphRAG, incremental sync
+- [ ] MCP (Model Context Protocol) support
+- [ ] Multi-Agent / Agent-to-Agent
+- [ ] Workflow designer
+- [ ] Long-term memory
+- [ ] Authentication / RBAC
 
 ## License
 

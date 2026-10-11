@@ -53,6 +53,7 @@ creo/
 ├── AGENTS.md            # 开发总规范（AI Agent 与人类贡献者都必读）
 ├── DESIGN.md            # UI Design System
 ├── CONTRIBUTING.md      # 开发流程与提交规范
+├── scripts/             # 架构边界检查与 pre-commit 辅助脚本
 ├── docs/
 │   ├── architecture.md  # 架构说明
 │   ├── decisions/       # ADR（架构决策记录）
@@ -115,6 +116,35 @@ docker compose up --build
 ```
 
 打开 <http://localhost:5173>。
+
+## 开发
+
+后端——测试与 lint：
+
+```bash
+cd backend
+uv run pytest            # 测试
+uv run ruff check .      # lint
+```
+
+前端——类型检查（strict）、lint、测试：
+
+```bash
+cd frontend
+pnpm run typecheck       # tsc --noEmit
+pnpm run lint            # eslint
+pnpm run test            # vitest
+pnpm run build           # 生产构建
+```
+
+一键 pre-commit 检查（架构边界、设计 token、后端 ruff + pytest、前端 typecheck + lint + test + build）：
+
+```bash
+bash scripts/pre-commit-check.sh
+
+# 可选：每次 git commit 自动执行
+git config core.hooksPath .githooks
+```
 
 ## 知识库配置（可选）
 
@@ -207,13 +237,26 @@ CREO_KB_EMBEDDING_DIM=1024
 | [docs/development/CHANGELOG.md](docs/development/CHANGELOG.md) | 用户可感知的功能变化 |
 | [docs/development/TECHNICAL-NOTES.md](docs/development/TECHNICAL-NOTES.md) | 技术实现细节与决策原因 |
 | [docs/development/PITFALLS.md](docs/development/PITFALLS.md) | 踩坑记录 |
-| [docs/milestones/MVP.md](docs/milestones/MVP.md) | MVP 验收标准 |
+| [docs/milestones/](docs/milestones/) | 验收标准与状态（MVP、KB v1） |
 
 ## 当前状态
 
 已实现：React Agent UI、DeepAgents Backend、SSE Streaming、Agent Session、Tool Call 可视化、Markdown / Code Block、Light / Dark Theme、基础错误处理、日志、测试、完整的项目治理文档，以及**知识库 v1**（PDF 上传 → Unstructured 解析 → BM25 + Dense 混合入库 Milvus/Zilliz → Agent 检索工具）。
 
 尚未实现（只预留扩展边界）：RAG 深水区（多格式解析、Rerank、GraphRAG）、MCP、Multi-Agent、Workflow、长期记忆、认证。
+
+## Roadmap
+
+每个阶段都落在稳定基础上再进入下一阶段——范围纪律见 [AGENTS.md](AGENTS.md)，以下事项**不会**提前实现。
+
+- [x] MVP —— Agent 对话、SSE 流式、会话管理、Tool 可视化、Markdown / 代码块、主题、治理文档
+- [x] 知识库 v1 —— PDF 上传、Unstructured 解析、混合检索（BM25 + Dense）、Agent 引用作答
+- [ ] 知识库 v2 —— 多格式解析（Office / HTML / 图片）、Rerank、GraphRAG、增量同步
+- [ ] MCP（Model Context Protocol）支持
+- [ ] Multi-Agent / Agent-to-Agent
+- [ ] Workflow 设计器
+- [ ] 长期记忆
+- [ ] 认证 / RBAC
 
 ## License
 

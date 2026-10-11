@@ -4,6 +4,12 @@
 
 ---
 
+## [2026-10-12] README 文档补强（Development / Roadmap）
+
+No significant pitfalls encountered.
+
+---
+
 ## [2026-09-30] 边界违规入库：只跑子集检查 + 管道 grep 吞掉脚本退出码
 
 ### Problem
