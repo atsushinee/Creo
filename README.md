@@ -35,6 +35,16 @@ Result
 - Markdown rendering with code blocks, light / dark theme
 - **Knowledge base (v1)**: create categorized knowledge bases, upload PDFs, and let the agent retrieve them with **hybrid search — dense vectors (bge-m3) + sparse BM25** served by Milvus / Zilliz Cloud
 
+## Screenshots
+
+| Document chat · citations · PDF preview | Recall test — hybrid vs dense vs sparse |
+| --- | --- |
+| ![Document chat with clickable citations and live PDF preview](imgs/1.png) | ![Three-way recall comparison](imgs/2.png) |
+
+| Agent answer with tool call · element-box overlay on the PDF |
+| --- |
+| ![Element-box overlay over the parsed PDF](imgs/3.png) |
+
 ## Tech Stack
 
 | Layer | Technology |
