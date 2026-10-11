@@ -90,8 +90,9 @@ function AssistantMessage({
               content={part.text}
               onCitation={
                 onCitationClick
-                  ? (citation) => {
-                      const page = citationPagesForPart(message.parts, index)[citation];
+                  ? (citation, inlinePage) => {
+                      const page =
+                        inlinePage ?? citationPagesForPart(message.parts, index)[citation];
                       if (page) {
                         onCitationClick(page);
                       }

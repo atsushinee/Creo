@@ -43,25 +43,35 @@ function Table({ children }: ComponentPropsWithoutRef<"table">) {
   );
 }
 
-/** Standalone `[N]` citation marker: not a link target, not a reference definition. */
-const CITATION_RE = /(?<!\])\[(\d{1,2})\](?!\()/g;
+/** Standalone `[N]` / `[N, page P]` citation marker: not a link target, not a
+ * reference definition. Models do not always follow the exact `[N]` format the
+ * tools request — the "page P" variant is common, so parse it tolerantly and
+ * carry the inline page through to the caller. */
+const CITATION_RE = /(?<!\])\[(\d{1,2})(?:\s*,\s*page\s*(\d{1,3}))?\](?![:(])/gi;
 const FENCE_SPLIT_RE = /(```[\s\S]*?(?:```|$))/g;
 
-/** Allow the internal `cite://N` scheme through; defaultUrlTransform would strip
- * it to an empty href (making citation clicks navigate to the current page). */
+/** Allow the internal `cite://N[/P]` scheme through; defaultUrlTransform would
+ * strip it to an empty href (making citation clicks navigate to the current page). */
 function urlTransform(url: string): string {
   return url.startsWith("cite://") ? url : defaultUrlTransform(url);
 }
 
 /**
- * Rewrite `[N]` citation markers into `cite://N` links so the custom anchor
- * component can make them clickable. Fenced code blocks are left untouched.
+ * Rewrite citation markers into `cite://N[/P]` links so the custom anchor
+ * component can make them clickable. Brackets are escaped so the marker text
+ * still renders as `[N]`; fenced code blocks are left untouched.
  */
 function linkifyCitations(content: string): string {
   return content
     .split(FENCE_SPLIT_RE)
     .map((segment, index) =>
-      index % 2 === 1 ? segment : segment.replace(CITATION_RE, "[$1](cite://$1)"),
+      index % 2 === 1
+        ? segment
+        : segment.replace(CITATION_RE, (_match, num: string, page?: string) =>
+            page
+              ? `\\[${num}, page ${page}\\](cite://${num}/${page})`
+              : `\\[${num}\\](cite://${num})`,
+          ),
     )
     .join("");
 }
@@ -91,8 +101,9 @@ const baseComponents: Components = {
 };
 
 /** Renders assistant markdown content (GFM + restrained code highlighting).
- * With `onCitation`, `[N]` markers produced by the knowledge tools become
- * clickable and report the citation number to the caller. */
+ * With `onCitation`, `[N]` / `[N, page P]` markers produced by the knowledge
+ * tools become clickable and report the citation number (plus the inline page
+ * when present) to the caller. */
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className,
@@ -100,7 +111,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 }: {
   content: string;
   className?: string;
-  onCitation?: (citation: number) => void;
+  onCitation?: (citation: number, inlinePage: number | null) => void;
 }) {
   const { t } = useI18n();
   const components = useMemo<Components>(() => {
@@ -110,12 +121,14 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     return {
       ...baseComponents,
       a: ({ children, href, ...props }) => {
-        const match = typeof href === "string" ? /^cite:\/\/(\d+)$/.exec(href) : null;
+        const match = typeof href === "string" ? /^cite:\/\/(\d+)(?:\/(\d+))?$/.exec(href) : null;
         if (match) {
           return (
             <button
               type="button"
-              onClick={() => onCitation(Number(match[1]))}
+              onClick={() =>
+                onCitation(Number(match[1]), match[2] ? Number(match[2]) : null)
+              }
               title={t("chat.citeJump")}
               aria-label={t("chat.citeJump")}
               className="cursor-pointer rounded-sm bg-surface px-0.5 font-medium text-primary transition-colors hover:bg-primary/10"
