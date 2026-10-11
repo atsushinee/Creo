@@ -42,9 +42,11 @@ function boxRect(
   if (!points?.length || !system) {
     return null;
   }
-  // Both spellings appear in the wild; normalize defensively.
-  const layoutWidth = system.layout_width ?? system.width ?? 0;
-  const layoutHeight = system.layout_height ?? system.height ?? 0;
+  // Two observed shapes: layout dims nested in a `system` object, or `system`
+  // as a plain string with the dims flattened onto the coordinates object.
+  const sys = typeof system === "object" ? system : coordinates;
+  const layoutWidth = sys.layout_width ?? sys.width ?? 0;
+  const layoutHeight = sys.layout_height ?? sys.height ?? 0;
   if (!layoutWidth || !layoutHeight) {
     return null;
   }

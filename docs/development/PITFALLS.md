@@ -13,6 +13,15 @@
 
 ---
 
+## [2026-10-12] 元素框选 overlay 无效果（coordinates 形状假设错误）
+
+**Problem**：文档解析缓存里明明有坐标，前端"元素框选"开关打开后一个框都不显示。
+**Cause**：开发时实测的坐标形状是 `coordinates.system = { layout_width, layout_height, … }`（对象嵌套），据此写了 `system.layout_width`；但另一批 Unstructured 响应返回的是 `system: "PixelSpace"`（字符串）+ `layout_width/height` **平铺在 coordinates 顶层**。取值得到 0，`boxRect` 直接返回 null。
+**Solution**：`boxRect` 兼容两种形状——`system` 为对象时从中取，为字符串时回退到 coordinates 顶层；`ElementCoordinates` 类型同步放宽。
+**Lesson**：对外部 API 的响应形状，"上次实测是这样"不等于"永远是这样"——同一供应商不同请求/版本会变。防御性解析要在**首次接线的字段层级**就做双形状兼容，并且用真实入库文档做冒烟验证，而不是只信开发时那一次观察。
+
+---
+
 ## [2026-10-12] README 文档补强（Development / Roadmap）
 
 No significant pitfalls encountered.

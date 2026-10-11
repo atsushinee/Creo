@@ -55,12 +55,18 @@ export interface RecallTestResult {
 
 /**
  * Bounding-box projection from the Unstructured parse result. `points` are
- * pixel coordinates in the layout system; `system` carries the layout
- * dimensions (layout_width/layout_height) used to normalize onto the page.
+ * pixel coordinates in the layout system used to normalize onto the page.
+ * Unstructured has shipped two shapes: layout dims nested inside a `system`
+ * object, or `system` as a plain string ("PixelSpace") with the dims flattened
+ * onto the coordinates object — both must be handled.
  */
 export interface ElementCoordinates {
   points: number[][];
-  system: Record<string, number>;
+  system: string | Record<string, number> | null;
+  layout_width?: number;
+  layout_height?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface ParseElementInfo {

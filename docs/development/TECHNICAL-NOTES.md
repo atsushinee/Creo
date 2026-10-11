@@ -13,6 +13,7 @@
 - **渲染改写**：`MarkdownRenderer` 仅在传入 `onCitation` 时把独立 `[N]` 标记改写为 `[N](cite://N)` 链接（正则带 `(?<!\])` / `(?!\()` 防御：不吃 reference-style 链接与真实链接），自定义 `a` 组件拦截 `cite://` href 渲染为按钮并上报编号；**fenced code block 内不改写**（按 ``` 分段跳过）。注意：react-markdown 的 `defaultUrlTransform` 会把非标准协议消毒为空 href，必须同时传自定义 `urlTransform` 放行 `cite://`（见 PITFALLS 2026-10-12）。主聊天界面不传 handler，引用保持纯文本，零行为变化。
 - **命令式桥接**：`PdfViewer` 改 `forwardRef + useImperativeHandle` 暴露 `scrollToPage`（复用内部翻页/页码同步逻辑）；`KnowledgePage` 持 ref，`handleCitationClick` 用 `useCallback` 稳定引用穿过 DocChatPanel → ChatMessages → MessageItem（memo 组件的 props 稳定性）。
 - **已知边界**：chunk 是打包生成的，未存 chunk↔element 坐标区间，所以点击引用**跳到页**而非高亮具体元素框；元素级定位需要入库时额外落 chunk→element 映射（留作后续）。
+- **坐标形状修正（2026-10-12）**：Unstructured 的 `coordinates.system` 并非总是对象——实测存在 `system: "PixelSpace"`（字符串）+ `layout_width/height` 平铺在 coordinates 顶层的形状。`boxRect` 现已双形状兼容（见 PITFALLS 同日条目）；`ElementCoordinates` 类型同步放宽。另注意：**只有 v2 解析缓存才带坐标**，v1 时期入库的文档（如"宇树章程"）需 reingest 一次才会生成坐标。
 
 ---
 
